@@ -42,9 +42,10 @@
   .shots small { display: block; color: #777; font-size: 14px; margin-top: 8px; text-transform: lowercase; }
 
   ol { list-style: none; counter-reset: s; padding: 0; margin: 0; }
-  ol li { counter-increment: s; display: grid; grid-template-columns: 70px 1fr; align-items: baseline;
+  ol li { counter-increment: s; position: relative; padding-left: 70px; min-height: 52px;
           margin-bottom: 22px; font-size: 19px; font-weight: 300; }
-  ol li::before { content: counter(s); font-size: 48px; font-weight: 200; color: #c4163a; line-height: 1; }
+  ol li::before { content: counter(s); position: absolute; left: 0; top: -4px;
+                  font-size: 48px; font-weight: 200; color: #c4163a; line-height: 1; }
 
   dl { margin: 0; }
   dt { font-size: 22px; font-weight: 400; margin-top: 26px; }
@@ -60,7 +61,7 @@
     h2 { font-size: 38px; }
     nav { gap: 18px; }
     nav .name { width: 100%; }
-    ol li { grid-template-columns: 50px 1fr; }
+    ol li { padding-left: 50px; }
   }
 </style>
 </head>
