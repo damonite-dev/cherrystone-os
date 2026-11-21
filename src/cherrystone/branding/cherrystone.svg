@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <g stroke-linejoin="round" stroke-width="14">
+    <!-- faceted stone: four facets meeting at a center point -->
+    <path d="M256 110 L420 250 L272 300 Z" fill="#ff5a6e" stroke="#ff5a6e"/>
+    <path d="M420 250 L256 470 L272 300 Z" fill="#a8132e" stroke="#a8132e"/>
+    <path d="M256 470 L92 250 L272 300 Z" fill="#d81e3c" stroke="#d81e3c"/>
+    <path d="M92 250 L256 110 L272 300 Z" fill="#ff8a98" stroke="#ff8a98"/>
+  </g>
+  <!-- leaf -->
+  <path d="M256 112 C262 56 312 30 366 38 C362 92 316 126 256 112 Z" fill="#46b36b"/>
+  <path d="M256 112 C290 84 322 64 350 52" fill="none" stroke="#2c8a4e" stroke-width="8" stroke-linecap="round"/>
+</svg>

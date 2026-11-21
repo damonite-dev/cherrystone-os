@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cherry Run</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000000; overflow: hidden;
+               font-family: "DejaVu Sans Mono", monospace; }
+  #wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; touch-action: none; image-rendering: -webkit-optimize-contrast;
+           image-rendering: pixelated; image-rendering: crisp-edges; }
+  #help { position: absolute; bottom: 6px; left: 0; right: 0; text-align: center; color: #8a8a8a; font-size: 11px; }
+  a { color: #ff5c7a; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c" width="320" height="160"></canvas></div>
+<div id="help">space / up / click = jump, again in the air = double jump &nbsp; p = pause &nbsp; m = sound</div>
+<script src="cherry-run.js"></script>
+</body>
+</html>

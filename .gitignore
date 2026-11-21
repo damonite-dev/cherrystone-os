@@ -1,0 +1,19 @@
+# Built and generated
+*.iso
+*.img
+__pycache__/
+*.pyc
+node_modules/
+
+# Cloudflare's local cache (has account details)
+.wrangler/
+
+# Local test helpers and old screenshots
+/probe*.sh
+/mkstick.sh
+/mkrufus.sh
+/extract-boot.sh
+/screenshots/
+
+# Claude Code settings
+.claude/

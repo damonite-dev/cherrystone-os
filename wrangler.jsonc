@@ -1,0 +1,13 @@
+// Cloudflare Worker that serves the Cherrystone website (src/cherrystone/site).
+// Deploy:  npx wrangler login   (once)
+//          npx wrangler deploy
+{
+  "name": "cherrystone",
+  "compatibility_date": "2025-10-01",
+  "assets": {
+    "directory": "./src/cherrystone/site"
+  },
+  "routes": [
+    { "pattern": "cherrystone.damonite.com", "custom_domain": true }
+  ]
+}

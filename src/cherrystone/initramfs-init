@@ -1,0 +1,405 @@
+#!/bin/sh
+# Cherrystone early boot. Finds the boot media, mounts the compressed system
+# image read-only, puts a RAM-backed writable layer on top, and hands over to
+# the real init. Nothing is unpacked into RAM: files are read from the media
+# on demand, and only what you change lives in memory.
+
+LABEL=CHERRYSTONE
+IMAGE=cherrystone.sfs
+
+/bin/busybox mkdir -p /usr/bin /usr/sbin /proc /sys /dev /tmp /run \
+	/sysroot /media/.boot /media/.ro /media/.rw
+/bin/busybox --install -s
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+
+mount -t proc -o noexec,nosuid,nodev proc /proc
+mount -t sysfs -o noexec,nosuid,nodev sysfs /sys
+mount -t devtmpfs -o exec,nosuid,mode=0755,size=2M devtmpfs /dev 2>/dev/null
+[ -c /dev/console ] && exec </dev/console >/dev/console 2>&1
+
+# What to try when the USB stick / CD can't be found or read
+MEDIA_HINT="  * Try another USB port (a USB 2 port if the computer has
+    both), then restart.
+  * Write the stick again with balenaEtcher, or with Rufus in
+    \"DD Image\" mode.
+  * Slow stick? At the boot menu press Tab, type  usbdelay=10
+    at the end of the line and press Enter."
+SAVE_HINT="  * Start once without your saved stuff: at the boot menu press
+    Tab, type  cherrystone.nosave  at the end and press Enter."
+
+# Print stdin centered as a block $1 columns wide
+center() {
+	pad=$(( (cols - $1) / 2 )); [ "$pad" -lt 0 ] && pad=0
+	while IFS= read -r l; do printf "%${pad}s%s\n" "" "$l"; done
+}
+
+# Fill the screen, then move down so $2 lines of content end up vertically
+# centred. Plain recovery-style screens: white, with dark text
+# and a cherry-red picture and title. ($1 is ignored; kept for callers.)
+paint() {
+	cols=80; rows=25
+	set -- "$1" "$2" $(stty size 2>/dev/null)
+	[ -n "$4" ] && { rows=$3; cols=$4; }
+	# Console palette: 1 = background, 7/15 = text, 2/10 = cherry red
+	printf '\033]P1ffffff\033]P73a3a3a\033]PF3a3a3a\033]P2c0182f\033]PAc0182f'
+	printf '\033[?25l\033[0;1;37;41m\033[2J\033[H'
+	top=$(( (rows - $2) / 2 )); [ "$top" -lt 0 ] && top=0
+	while [ "$top" -gt 0 ]; do echo; top=$((top - 1)); done
+}
+
+# A centred title in cherry red
+title() {
+	pad=$(( (cols - ${#1}) / 2 )); [ "$pad" -lt 0 ] && pad=0
+	printf "%${pad}s\033[1;32m%s\033[1;37m\n" "" "$1"
+}
+
+# Pictures in cherry red
+red() { printf '\033[1;32m'; center "$1"; printf '\033[1;37m'; }
+
+# The starting-up screen: plain black, nothing on it, until the cherry
+# logo (and then the sign-in screen) take over, like a phone starting up.
+splash() {
+	printf '\033]P0000000\033[0m\033[?25l\033[2J\033[H'
+}
+
+# Back to normal console colours
+unpaint() { printf '\033]R\033[0m\033[?25h\033[2J\033[H'; }
+
+# Password lines ("root:..." and "cherrystone:...") from saved stuff on any
+# drive: a Save my stuff drive, or an installed disk's /persist
+saved_shadow() {
+	mkdir -p /tmp/chk
+	for dev in $(blkid 2>/dev/null | grep -E 'LABEL="(CHERRYSAVE|CHERRYSTONE)"' | cut -d: -f1); do
+		mount -o ro "$dev" /tmp/chk 2>/dev/null || continue
+		for f in /tmp/chk/upper/etc/shadow /tmp/chk/persist/upper/etc/shadow; do
+			[ -f "$f" ] && grep -E '^(root|cherrystone):' "$f"
+		done
+		umount /tmp/chk
+	done
+}
+
+# pw_ok PASSWORD HASH: is it the password?
+pw_ok() {
+	case "$2" in '$'*) ;; *) return 1 ;; esac
+	id="$(echo "$2" | cut -d'$' -f2)"; salt="$(echo "$2" | cut -d'$' -f3)"
+	case "$id" in 1) m=md5 ;; 5) m=sha256 ;; 6) m=sha512 ;; *) return 1 ;; esac
+	[ "$(printf '%s\n' "$1" | cryptpw -P 0 -m "$m" -S "$salt")" = "$2" ]
+}
+
+# The "couldn't start" screen: cherry red, a sad cherry, what went wrong and
+# what to try. R restarts; any other key opens a rescue shell (which asks
+# for the password, if one was set in Settings).
+rescue() {
+	why="$1"; hint="${2:-$SAVE_HINT}"
+	paint a3243b 24
+
+	red 28 <<'ART'
+              __
+           .-'  )
+          / .--'
+         / /  \
+        / /    \          _
+   .---/-.    .-\---.    | |
+  /       \  /       \   | |
+ |  o   o  ||  o   o  |  | |
+ |   .-.   ||   .-.   |  |_|
+  \       /  \       /    _
+   '-----'    '-----'    (_)
+ART
+	echo
+	title "Cherrystone couldn't start."
+	echo
+	center 64 <<EOF
+  * Don't panic! Your computer and your files are fine.
+  * What went wrong: $why
+$hint
+
+          Press R to restart, or Enter for a rescue shell.
+EOF
+	key=""
+	read -r -n 1 key 2>/dev/null
+	case "$key" in r|R) unpaint; reboot -f ;; esac
+
+	# Rescue shell, in normal colours. With a password set, it asks for it:
+	# otherwise the shell could be used to read the saved stuff.
+	unpaint
+	hash="$(saved_shadow | awk -F: '$1 == "root" && $2 != "" { print $2; exit }')"
+	if [ -n "$hash" ]; then
+		echo "This computer has a password. Type it to open the rescue shell."
+		tries=0
+		while :; do
+			printf 'Password: '
+			stty -echo 2>/dev/null; pw=""; IFS= read -r pw; stty echo 2>/dev/null; echo
+			pw_ok "$pw" "$hash" && break
+			tries=$((tries + 1))
+			if [ "$tries" -ge 3 ]; then
+				echo "That's not the password. Restarting..."; sleep 3; reboot -f
+			fi
+			echo "That's not the password. Try again."
+		done
+		echo
+	fi
+	echo "Cherrystone couldn't start: $why"
+	echo
+	echo "Drives seen:"; blkid 2>/dev/null
+	echo
+	echo "This is a rescue shell. Type  reboot -f  to restart."
+	exec /bin/busybox sh
+}
+
+# usbdelay=N on the kernel command line waits longer for slow USB sticks
+usbdelay=
+for opt in $(cat /proc/cmdline); do
+	case "$opt" in
+		usbdelay=*) usbdelay="${opt#usbdelay=}" ;;
+	esac
+done
+
+# Filesystems the boot media can be on: a CD or a stick written with dd/Etcher
+# (iso9660), a stick written by Rufus in ISO mode (FAT32, or exFAT), or an
+# installed disk (ext4).
+FSTYPES="iso9660 vfat exfat ext4"
+modprobe -a -q loop squashfs overlay isofs vfat exfat ext4 \
+	nls_cp437 nls_iso8859-1 nls_utf8 2>/dev/null
+
+# Mount $1 at /media/.boot, trying each filesystem type
+mount_boot() {
+	mount -o ro "$1" /media/.boot 2>/dev/null && return 0
+	for t in $FSTYPES; do
+		mount -t "$t" -o ro "$1" /media/.boot 2>/dev/null && return 0
+	done
+	return 1
+}
+
+splash
+
+# Load storage drivers and wait for the boot media to show up
+nlplug-findfs -p /sbin/mdev ${usbdelay:+-t $((usbdelay * 1000))} "LABEL=$LABEL"
+
+# The boot media is the drive with the system image. Started from the USB
+# stick or CD (cherrystone.live), skip a Cherrystone installed on the
+# computer's disk (it has /persist); started from the disk, prefer it.
+live=""
+grep -qw cherrystone.live /proc/cmdline && live=1
+try_media() { # device, "strict" (installed boots want /persist)
+	mount_boot "$1" || return 1
+	if [ -f "/media/.boot/$IMAGE" ]; then
+		if [ -n "$live" ] && [ -d /media/.boot/persist ]; then :
+		elif [ -z "$live" ] && [ "$2" = strict ] && [ ! -d /media/.boot/persist ]; then :
+		else return 0; fi
+	fi
+	umount /media/.boot
+	return 1
+}
+found=""
+labelled="$(blkid 2>/dev/null | grep "LABEL=\"$LABEL\"" | cut -d: -f1)"
+for pass in strict any; do
+	for dev in $labelled; do
+		try_media "$dev" "$pass" && { found=1; break 2; }
+	done
+done
+# Label missing or unreadable (some USB tools rename it): look on every drive
+if [ -z "$found" ]; then
+	for b in /sys/class/block/*; do
+		dev="/dev/${b##*/}"
+		[ -b "$dev" ] || continue
+		case "${b##*/}" in loop*|ram*|zram*) continue ;; esac
+		try_media "$dev" any && { found=1; break; }
+	done
+fi
+[ -n "$found" ] || rescue "couldn't find or read the USB stick or CD." "$MEDIA_HINT"
+mount -t squashfs -o ro,loop "/media/.boot/$IMAGE" /media/.ro \
+	|| rescue "the system image ($IMAGE) is damaged." \
+"  * The stick may not have been written completely. Write it
+    again with balenaEtcher, or with Rufus in \"DD Image\" mode.
+  * Old or worn-out sticks fail like this too: try another one."
+
+# cherrystone.testerror on the kernel command line shows the screen above
+grep -qw cherrystone.testerror /proc/cmdline \
+	&& rescue "this is just a test (cherrystone.testerror)" "$MEDIA_HINT"
+
+# Cherrystone needs about 1 GB of memory to browse the web; Recovery runs on
+# less. (T starts anyway, for machines that report a little under 1 GB.)
+kb="$(awk '/^MemTotal:/ { print $2 }' /proc/meminfo)"
+if [ "${kb:-0}" -lt 819200 ] && ! grep -qw cherrystone.recovery /proc/cmdline; then
+	paint 3a121c 24
+	red 28 <<'ART'
+              __
+           .-'  )
+          / .--'
+         / /  \
+        / /    \
+   .---/-.    .-\---.
+  /       \  /       \
+ |  o   o  ||  o   o  |
+ |   .-.   ||   .-.   |
+  \       /  \       /
+   '-----'    '-----'
+ART
+	echo
+	title "This computer needs more memory."
+	echo
+	center 64 <<EOF
+  * Cherrystone needs at least 1 GB of memory (RAM) to browse
+    the web. This computer has $((kb / 1024)) MB.
+  * Many old computers can take more: a 1 or 2 GB memory stick
+    for an old laptop is cheap.
+
+                 Press any key to shut down.
+EOF
+	key=""
+	read -r -n 1 key 2>/dev/null
+	case "$key" in
+		t|T) unpaint ;;
+		*) unpaint; poweroff -f ;;
+	esac
+fi
+
+# Where changes go ("Save my stuff"):
+#  - installed on a disk: /persist on the same disk
+#  - a drive labelled CHERRYSAVE (made in Settings > Save my stuff)
+#  - otherwise RAM, forgotten at shutdown
+# cherrystone.nosave on the kernel command line forces RAM.
+mkdir -p /media/.save
+rw=""
+# (Recovery doesn't load saved stuff either: it's for repairing it)
+if ! grep -qw cherrystone.nosave /proc/cmdline && ! grep -qw cherrystone.recovery /proc/cmdline; then
+	if [ -d /media/.boot/persist ] && mount -o remount,rw /media/.boot 2>/dev/null; then
+		rw=/media/.boot/persist
+	else
+		save="$(findfs LABEL=CHERRYSAVE 2>/dev/null)"
+		if [ -n "$save" ] && mount -t ext4 "$save" /media/.save 2>/dev/null; then
+			rw=/media/.save
+		fi
+	fi
+fi
+if [ -z "$rw" ]; then
+	# Writable layer in RAM. size= is a ceiling, not a reservation.
+	mount -t tmpfs -o mode=0755,size=75% tmpfs /media/.rw \
+		|| rescue "couldn't set up memory for this session."
+	rw=/media/.rw
+fi
+# Reset (Settings > Reset Cherrystone): put Cherrystone back to how it was
+# new by erasing the saved stuff. A warning, then the password (if one is set,
+# so not just anyone can wipe it), then typing ERASE. Anything else starts
+# normally with nothing erased.
+woah() { # the warning screen's top half
+	paint 7a3410 24
+	red 28 <<'ART'
+              __
+           .-'  )
+          / .--'
+         / /  \
+        / /    \          _
+   .---/-.    .-\---.    | |
+  /       \  /       \   | |
+ |  O   O  ||  O   O  |  | |
+ |    o    ||    o    |  |_|
+  \       /  \       /    _
+   '-----'    '-----'    (_)
+ART
+	echo
+	title "Woah there!"
+	echo
+}
+# Settings > Reset Cherrystone leaves a "reset-requested" note next to the saved stuff
+reset_requested=""
+if [ -f "$rw/reset-requested" ]; then rm -f "$rw/reset-requested"; sync; reset_requested=1; fi
+if [ -n "$reset_requested" ]; then
+	woah
+	if [ "$rw" = /media/.rw ]; then
+		center 64 <<EOF
+  * This resets Cherrystone, but nothing is saved on this
+    computer, so there's nothing to erase.
+
+               Press any key to start Cherrystone.
+EOF
+		read -r -n 1 key 2>/dev/null
+	else
+		center 64 <<EOF
+  * This resets Cherrystone. It puts Cherrystone back the way
+    it was when it was new.
+  * That ERASES your settings, Wi-Fi passwords, your password
+    and every file you kept in Cherrystone, for good. USB
+    sticks and other drives aren't touched.
+
+     Press E to erase, or any other key to start normally
+     (nothing is erased).
+EOF
+		key=""
+		read -r -n 1 key 2>/dev/null
+		erase=""
+		case "$key" in e|E) erase=1 ;; esac
+
+		# The password, if one is set
+		hash="$(awk -F: '$1 == "root" { print $2 }' "$rw/upper/etc/shadow" 2>/dev/null)"
+		if [ -n "$erase" ] && [ -n "$hash" ]; then
+			woah
+			center 64 <<EOF
+  * This computer has a password. Only someone who knows it
+    can erase it.
+
+     Type the password and press Enter (just Enter cancels):
+EOF
+			tries=0; erase=""
+			while [ "$tries" -lt 3 ]; do
+				printf "%$(( (cols - 64) / 2 + 5 ))s" ""
+				stty -echo 2>/dev/null; pw=""; IFS= read -r pw; stty echo 2>/dev/null; echo
+				[ -n "$pw" ] || break
+				if pw_ok "$pw" "$hash"; then erase=1; break; fi
+				tries=$((tries + 1))
+				[ "$tries" -lt 3 ] && echo "That's not the password. Try again:" | center 64
+			done
+			if [ -z "$erase" ]; then
+				echo; echo "Nothing was erased. Starting Cherrystone..." | center 44; sleep 3
+			fi
+		fi
+
+		# Last chance
+		if [ -n "$erase" ]; then
+			woah
+			center 64 <<EOF
+  * Last chance! Everything you kept in Cherrystone will be
+    gone for good.
+
+     To erase it, type  ERASE  (in capitals) and press Enter.
+     Anything else starts Cherrystone without erasing.
+EOF
+			printf "%$(( (cols - 64) / 2 + 5 ))s" ""
+			answer=""; IFS= read -r answer
+			if [ "$answer" = ERASE ]; then
+				echo; echo "Erasing..." | center 10
+				rm -rf "$rw/upper" "$rw/work"
+				sync
+			else
+				echo; echo "Nothing was erased. Starting Cherrystone..." | center 44; sleep 2
+			fi
+		fi
+	fi
+	unpaint
+fi
+
+splash
+mkdir -p "$rw/upper" "$rw/work"
+mount -t overlay -o lowerdir=/media/.ro,upperdir="$rw/upper",workdir="$rw/work" \
+	overlay /sysroot || rescue "couldn't load your saved stuff."
+
+# Started without the saved stuff (cherrystone.nosave)? Keep its password
+# anyway, so starting that way can't be used to get around it.
+if [ "$rw" = /media/.rw ]; then
+	saved_shadow | awk -F: '$2 ~ /^\$/' > /tmp/saved.shadow
+	if [ -s /tmp/saved.shadow ]; then
+		awk -F: 'NR == FNR { s[$1] = $0; next } ($1 in s) { print s[$1]; next } { print }' \
+			/tmp/saved.shadow /sysroot/etc/shadow > /tmp/shadow.new &&
+			cat /tmp/shadow.new > /sysroot/etc/shadow
+	fi
+	rm -f /tmp/saved.shadow /tmp/shadow.new
+fi
+
+for d in /media/.boot /media/.ro /media/.rw /media/.save /dev /sys /proc; do
+	mountpoint -q "$d" || continue
+	mkdir -p "/sysroot$d"
+	mount -o move "$d" "/sysroot$d"
+done
+
+exec switch_root /sysroot /sbin/init

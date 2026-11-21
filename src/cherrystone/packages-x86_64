@@ -1,0 +1,12 @@
+# Extra packages for the 64-bit ISO only (added to the list in "packages").
+# Newer laptops and Chromebooks (with MrChromebox's UEFI firmware) need more
+# for sound than old netbooks: the sound chip's own firmware (Intel/AMD SOF),
+# speaker amplifier firmware, and "UCM" profiles that say how the speakers
+# and headphone jack are wired. PipeWire uses those profiles; plain ALSA
+# can't, which is why these machines had no sound at all.
+sof-firmware linux-firmware-intel linux-firmware-cirrus
+alsa-ucm-conf
+pipewire pipewire-alsa pipewire-pulse wireplumber
+# Chromebook keyboards: the top row (back, refresh, brightness, volume...)
+# and Search+arrows for Page Up/Down, Home/End (cherrystone-chromebook-keys)
+keyd keyd-openrc

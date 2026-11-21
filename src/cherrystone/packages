@@ -1,0 +1,66 @@
+# Packages installed into the Cherrystone system image. One or more per line.
+
+# Base system + kernel
+alpine-base
+linux-lts mkinitfs
+eudev udev-init-scripts udev-init-scripts-openrc
+seatd dbus
+
+# Firmware. "none" stops the kernel pulling in the full ~1 GB firmware set;
+# the rest are small sets for common older hardware.
+linux-firmware-none
+linux-firmware-radeon linux-firmware-i915
+linux-firmware-rtl_nic linux-firmware-rtlwifi linux-firmware-rtw88
+linux-firmware-ath9k_htc linux-firmware-brcm
+linux-firmware-other       # Intel (iwlwifi), Ralink and many other older Wi-Fi chips
+
+# Graphics
+xorg-server xinit xf86-input-libinput
+xf86-video-vesa xf86-video-fbdev xf86-video-intel
+xf86-video-ati xf86-video-nouveau mesa-dri-gallium
+
+# Desktop
+openbox tint2 rofi feh font-dejavu font-cantarell adwaita-icon-theme papirus-icon-theme xsetroot setxkbmap doas
+dunst libnotify          # notifications (volume/brightness popups)
+picom                    # window animations (fade and grow in, slide for shelf popups)
+tzdata                   # time zones
+
+# Hardware
+acpid acpid-openrc       # power button, lid close -> suspend
+brightnessctl            # brightness keys
+scrot                    # Print Screen
+udisks2 gvfs polkit      # USB sticks and SD cards mount automatically
+ntfs-3g                  # ...including Windows-formatted ones
+arandr                   # display settings
+i3lock                   # lock screen
+jq                       # notification history
+syslinux sfdisk e2fsprogs lsblk   # install to disk, Save my stuff
+dosfstools               # the UEFI boot partition on installed computers
+
+# Apps
+pcmanfm        # files
+lxterminal     # terminal
+mousepad       # text editor
+xclip          # copy screenshots
+gpicview       # image viewer
+mpv            # media player
+htop           # task manager (in the terminal)
+
+# Network + sound
+networkmanager networkmanager-wifi networkmanager-cli network-manager-applet
+alsa-utils
+xrandr                   # spots small netbook screens
+xinput                   # touchpad settings
+
+# Bluetooth (mice, keyboards; firmware for common USB adapters)
+bluez bluez-openrc blueman
+linux-firmware-rtl_bt linux-firmware-qca
+
+# The browser: Badwolf, a small WebKit browser (Safari's engine), with
+# GStreamer for video. Cherrystone builds its own Badwolf with JavaScript on
+# (see mkiso.sh).
+badwolf
+ca-certificates glib-networking # secure (https) websites
+gst-plugins-good gst-libav
+hunspell-en enchant2-hunspell   # spell checking in the browser
+mesa-gles mesa-egl       # WebKit needs OpenGL ES

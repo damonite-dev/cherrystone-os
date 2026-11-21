@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cherrystone</title>
+<meta name="description" content="Cherrystone turns old laptops and netbooks into simple, fast web computers.">
+<link rel="icon" href="img/favicon.png">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #ffffff; color: #1a1a1a;
+         font-family: "Segoe UI", "Selawik", Cantarell, "Helvetica Neue", Arial, sans-serif;
+         font-size: 17px; line-height: 1.55; }
+  a { color: #c4163a; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .page { max-width: 1040px; margin: 0 auto; padding: 0 28px; }
+
+  nav { display: flex; flex-wrap: wrap; align-items: baseline; gap: 28px; padding: 28px 0 0;
+        font-size: 15px; text-transform: lowercase; }
+  nav .name { font-size: 20px; font-weight: 600; color: #c4163a; margin-right: auto; text-transform: none; }
+  nav a { color: #555; }
+
+  .hero { padding: 90px 0 70px; }
+  .hero h1 { font-size: 88px; font-weight: 200; line-height: 1; letter-spacing: -3px; margin: 0 0 24px; }
+  .hero p { font-size: 26px; font-weight: 300; color: #444; max-width: 640px; margin: 0 0 40px; }
+  .get { font-size: 22px; font-weight: 300; }
+  .get a { font-weight: 600; margin-right: 34px; }
+  .get .arrow { font-weight: 300; }
+  .note { font-size: 15px; color: #777; margin-top: 12px; }
+
+  section { padding: 60px 0 10px; }
+  h2 { font-size: 52px; font-weight: 200; letter-spacing: -1.5px; line-height: 1.1; margin: 0 0 30px; }
+  h2 span { color: #c4163a; }
+
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 26px 48px; }
+  .cols div b { display: block; font-size: 21px; font-weight: 400; margin-bottom: 2px; }
+  .cols div { color: #555; font-size: 16px; }
+
+  .shot { display: block; width: 100%; margin: 10px 0 0; }
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 28px; margin-top: 34px; }
+  .shots img { width: 100%; display: block; }
+  .shots small { display: block; color: #777; font-size: 14px; margin-top: 8px; text-transform: lowercase; }
+
+  ol { list-style: none; counter-reset: s; padding: 0; margin: 0; }
+  ol li { counter-increment: s; display: grid; grid-template-columns: 70px 1fr; align-items: baseline;
+          margin-bottom: 22px; font-size: 19px; font-weight: 300; }
+  ol li::before { content: counter(s); font-size: 48px; font-weight: 200; color: #c4163a; line-height: 1; }
+
+  dl { margin: 0; }
+  dt { font-size: 22px; font-weight: 400; margin-top: 26px; }
+  dd { margin: 4px 0 0; color: #555; max-width: 680px; }
+
+  footer { padding: 90px 0 40px; font-size: 14px; color: #888; }
+
+  @media (max-width: 700px) {
+    .page { padding: 0 18px; }
+    .hero { padding: 50px 0 40px; }
+    .hero h1 { font-size: 56px; letter-spacing: -2px; }
+    .hero p { font-size: 21px; }
+    h2 { font-size: 38px; }
+    nav { gap: 18px; }
+    nav .name { width: 100%; }
+    ol li { grid-template-columns: 50px 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <nav>
+    <span class="name">Cherrystone</span>
+    <a href="#download">download</a>
+    <a href="#features">features</a>
+    <a href="#install">install</a>
+    <a href="#faq">faq</a>
+  </nav>
+
+  <div class="hero">
+    <h1>Old laptop.<br>New again.</h1>
+    <p>Cherrystone is a small, simple operating system built around a web browser. It runs from a
+      USB stick and it's free.</p>
+    <div class="get" id="download">
+      <a href="https://archive.org/download/cherrystone/cherrystone-x86.iso">Download 32-bit <span class="arrow">&rarr;</span></a>
+      <a href="https://archive.org/download/cherrystone/cherrystone-x86_64.iso">64-bit <span class="arrow">&rarr;</span></a>
+    </div>
+    <p class="note">32-bit works on almost any PC (about 520 MB). 64-bit is for newer PCs (about 615 MB).</p>
+  </div>
+
+  <img class="shot" src="img/home.png" alt="Cherrystone's home page">
+
+  <section id="features">
+    <h2>Everything you need.<br><span>Nothing you don't.</span></h2>
+    <div class="cols">
+      <div><b>Browser</b>Blocks ads, so pages load faster.</div>
+      <div><b>Home page</b>Your sites, one click away.</div>
+      <div><b>Taskbar</b>Wi-Fi, volume, battery and the time.</div>
+      <div><b>Save my stuff</b>Keep files and settings on the stick.</div>
+      <div><b>Password and guest mode</b>For when someone borrows it.</div>
+      <div><b>Reset and Recovery</b>Fix it in a couple of clicks.</div>
+      <div><b>Little extras</b>Notes, a calculator and a small game.</div>
+      <div><b>No accounts</b>Nothing to sign up for.</div>
+    </div>
+    <div class="shots">
+      <div><img src="img/launcher.png" alt="Launcher"><small>Launcher</small></div>
+      <div><img src="img/settings.png" alt="Settings"><small>Settings</small></div>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>Install</h2>
+    <ol>
+      <li>Write the download to a USB stick with <a href="https://rufus.ie/">Rufus</a> or
+        <a href="https://etcher.balena.io/">balenaEtcher</a>. This erases the stick.</li>
+      <li>Plug it in, turn the computer on and pick the stick from the boot menu
+        (usually F12, F11 or Esc).</li>
+      <li>It runs from the stick without changing the computer. To keep it, click Install on the taskbar.</li>
+    </ol>
+  </section>
+
+  <section id="faq">
+    <h2>Questions</h2>
+    <dl>
+      <dt>What do I need?</dt>
+      <dd>A PC from about 2008 or newer with 1 GB of RAM, and a USB stick of 1 GB or more.</dd>
+      <dt>How fast is it?</dt>
+      <dd>On very old netbooks, Wikipedia and email work well and YouTube is slow. On newer computers it's very fast.</dd>
+      <dt>Will it erase my computer?</dt>
+      <dd>Only if you choose Install.</dd>
+      <dt>Something stopped working.</dt>
+      <dd>Go to Settings &gt; Advanced &gt; Reset. If it won't start, boot from the stick and choose Recovery.</dd>
+      <dt>Where do I report bugs?</dt>
+      <dd>Leave a comment on the <a href="https://archive.org/details/cherrystone">archive.org page</a>.</dd>
+    </dl>
+  </section>
+
+  <footer>Built on Alpine Linux. Last updated November 2026.</footer>
+
+</div>
+</body>
+</html>
