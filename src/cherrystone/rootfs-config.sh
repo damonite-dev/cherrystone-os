@@ -311,6 +311,8 @@ check:checked, radio:checked { border-color: #d81e3c; color: #ffffff; }
 switch { background-image: none; border-radius: 0; border: none; background-color: #dadce0; }
 switch slider { background-image: none; border-radius: 0; border: none; background-color: #ffffff; }
 menu, popover, popover.background, .csd popover, tooltip, tooltip.background { border-radius: 0; }
+tooltip, tooltip.background { background-color: #ffffff; border-top: 2px solid #d81e3c; }
+tooltip label { color: #202124; }
 menu, popover { border: 1px solid #dadce0; }
 headerbar, .titlebar { background-color: #ffffff; border-bottom: 1px solid #e8eaed; }
 scrollbar slider { border-radius: 0; min-width: 6px; min-height: 6px; background-color: #bdc1c6; }
@@ -716,6 +718,20 @@ rounded = 0
 border_width = 0
 background_color = #d81e3c 100
 border_color = #000000 0
+
+# background 5: the labels when you hover over something (flat white, cherry line on top)
+rounded = 0
+border_width = 2
+border_sides = T
+background_color = #ffffff 100
+border_color = #d81e3c 100
+
+tooltip_background_id = 5
+tooltip_font = Cantarell 10
+tooltip_font_color = #202124 100
+tooltip_padding = 10 6
+tooltip_show_timeout = 0.4
+tooltip_hide_timeout = 0.1
 
 panel_items = PLTSEEEECP
 panel_size = 100% 40
