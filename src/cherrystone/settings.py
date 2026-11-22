@@ -3,7 +3,7 @@
 #   cherrystone-settings            Settings
 #   cherrystone-settings advanced   the rarely needed things
 #   cherrystone-settings quick      quick settings, above the clock (click the clock)
-import os, sys, signal, subprocess, time
+import os, re, sys, signal, subprocess, time
 import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk, GLib
@@ -19,7 +19,11 @@ window.pop { border-top: 3px solid #d81e3c; }
 .small { font-size: 9px; color: #3c4043; }
 button.tile { background: none; background-image: none; border: none; border-radius: 0;
               padding: 6px 10px; box-shadow: none; }
-button.tile label { font-size: 15px; font-weight: 300; }
+/* the same size in every state, and only the background fades (no growing text) */
+button.tile, button.tile:hover, button.tile:active, button.tile:focus {
+              transition: background-color 150ms ease-out; -gtk-icon-transform: none; }
+button.tile label, button.tile:hover label, button.tile:active label, button.tile:focus label {
+              font-size: 15px; font-weight: 300; transition: none; }
 .title { font-size: 34px; }
 button.tile:hover { background: #fde4e8; }
 button.tile label { color: #202124; }
@@ -92,11 +96,11 @@ def styled(win, *classes):
 # ------------------------------------------------------------------ Settings
 
 EVERYDAY = [
-    ("Wi-Fi", "network-wireless preferences-system-network", "cherrystone-wifi"),
+    ("Wi-Fi", "preferences-system-network network-wireless", "cherrystone-wifi"),
     ("Bluetooth", "preferences-system-bluetooth bluetooth", "cherrystone-bluetooth"),
     ("Sound", "preferences-desktop-sound multimedia-volume-control audio-volume-high", "cherrystone-slider volume"),
     ("Display", "preferences-desktop-display video-display", "cherrystone-display"),
-    ("Wallpaper", "preferences-desktop-wallpaper preferences-desktop-background image-x-generic", "cherrystone-wallpaper"),
+    ("Personalize", "preferences-desktop-wallpaper preferences-desktop-background image-x-generic", "cherrystone-wallpaper"),
     ("Name and picture", "preferences-desktop-user user-info avatar-default", "cherrystone-profile"),
     ("Password", "preferences-desktop-user-password dialog-password system-lock-screen", "cherrystone-lockpass"),
     ("Keyboard and time", "preferences-desktop-keyboard input-keyboard", "cherrystone-welcome --settings"),
@@ -344,9 +348,28 @@ def quick():
     return True
 
 
+# Dark mode (Settings > Personalize): the same colour swap as the rest of Cherrystone
+_DARK = [('#ffffff', '#18181a'), ('#f8f9fa', '#1e1e21'), ('#f1f3f4', '#26262a'), ('#e8eaed', '#303035'), ('#dadce0', '#3c3c42'), ('#d7d9dc', '#303035'), ('#c4c7cc', '#3c3c42'), ('#fde4e8', '#4a1a26'), ('#fbe3e8', '#4a1a26'), ('#f9c9d2', '#5c1f2e'), ('#202124', '#ececef'), ('#3c4043', '#c8c8cc'), ('#5f6368', '#a0a0a6'), ('#80868b', '#8a8a90'), ('#9aa0a6', '#76767c'), ('#bdc1c6', '#5a5a60')]
+
+
+def _darken(css):
+    if open(os.path.expanduser("~/.config/cherrystone/theme")).read().strip() != "dark":
+        return css
+    s = css.decode()
+    s = re.sub(r"(?<![-.\w])color: #ffffff", "color: @KEEPWHITE@", s)
+    for i, (a, _) in enumerate(_DARK):
+        s = re.sub(a, "@C%d@" % i, s, flags=re.I)
+    for i, (_, b) in enumerate(_DARK):
+        s = s.replace("@C%d@" % i, b)
+    return s.replace("@KEEPWHITE@", "#ffffff").encode()
+
+
 if __name__ == "__main__":
     prov = Gtk.CssProvider()
-    prov.load_from_data(CSS)
+    try:
+        prov.load_from_data(_darken(CSS))
+    except OSError:
+        prov.load_from_data(CSS)
     Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), prov,
                                              Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
     arg = sys.argv[1] if len(sys.argv) > 1 else ""

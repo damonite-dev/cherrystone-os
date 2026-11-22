@@ -4,18 +4,19 @@
 <meta charset="utf-8">
 <title>Cherry Run</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #000000; overflow: hidden;
-               font-family: "DejaVu Sans Mono", monospace; }
+  html, body { margin: 0; height: 100%; background: #ffffff; overflow: hidden;
+               font-family: Cantarell, sans-serif; color: #5f6368; }
   #wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
   canvas { display: block; touch-action: none; image-rendering: -webkit-optimize-contrast;
            image-rendering: pixelated; image-rendering: crisp-edges; }
-  #help { position: absolute; bottom: 6px; left: 0; right: 0; text-align: center; color: #8a8a8a; font-size: 11px; }
-  a { color: #ff5c7a; }
+  #help { position: absolute; bottom: 6px; left: 0; right: 0; text-align: center; color: #5f6368; font-size: 12px; }
+  a { color: #d81e3c; }
+  @media (prefers-color-scheme: dark) { html, body { background: #18181a; } #help { color: #a0a0a6; } }
 </style>
 </head>
 <body>
 <div id="wrap"><canvas id="c" width="320" height="160"></canvas></div>
-<div id="help">space / up / click = jump, again in the air = double jump &nbsp; p = pause &nbsp; m = sound</div>
+<div id="help">space or tap: jump &nbsp;&middot;&nbsp; down: duck &nbsp;&middot;&nbsp; &larr; &rarr;: pick a Stony &nbsp;&middot;&nbsp; p: pause &nbsp;&middot;&nbsp; m: sound</div>
 <script src="cherry-run.js"></script>
 </body>
 </html>

@@ -335,9 +335,29 @@ class Notes(Gtk.Window):
             self.new_note()
 
 
+# Dark mode (Settings > Personalize): the same colour swap as the rest of Cherrystone
+import re
+_DARK = [('#ffffff', '#18181a'), ('#f8f9fa', '#1e1e21'), ('#f1f3f4', '#26262a'), ('#e8eaed', '#303035'), ('#dadce0', '#3c3c42'), ('#d7d9dc', '#303035'), ('#c4c7cc', '#3c3c42'), ('#fde4e8', '#4a1a26'), ('#fbe3e8', '#4a1a26'), ('#f9c9d2', '#5c1f2e'), ('#202124', '#ececef'), ('#3c4043', '#c8c8cc'), ('#5f6368', '#a0a0a6'), ('#80868b', '#8a8a90'), ('#9aa0a6', '#76767c'), ('#bdc1c6', '#5a5a60')]
+
+
+def _darken(css):
+    if open(os.path.expanduser("~/.config/cherrystone/theme")).read().strip() != "dark":
+        return css
+    s = css.decode()
+    s = re.sub(r"(?<![-.\w])color: #ffffff", "color: @KEEPWHITE@", s)
+    for i, (a, _) in enumerate(_DARK):
+        s = re.sub(a, "@C%d@" % i, s, flags=re.I)
+    for i, (_, b) in enumerate(_DARK):
+        s = s.replace("@C%d@" % i, b)
+    return s.replace("@KEEPWHITE@", "#ffffff").encode()
+
+
 p = Gtk.CssProvider()
-p.load_from_data(CSS)
-Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), p, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+try:
+    p.load_from_data(_darken(CSS))
+except OSError:
+    p.load_from_data(CSS)
+Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), p, Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
 Notes().show_all()
 Gtk.main()
 EOF
@@ -469,9 +489,29 @@ def key(w, e):
 
 
 win.connect("key-press-event", key)
+# Dark mode (Settings > Personalize): the same colour swap as the rest of Cherrystone
+import re
+_DARK = [('#ffffff', '#18181a'), ('#f8f9fa', '#1e1e21'), ('#f1f3f4', '#26262a'), ('#e8eaed', '#303035'), ('#dadce0', '#3c3c42'), ('#d7d9dc', '#303035'), ('#c4c7cc', '#3c3c42'), ('#fde4e8', '#4a1a26'), ('#fbe3e8', '#4a1a26'), ('#f9c9d2', '#5c1f2e'), ('#202124', '#ececef'), ('#3c4043', '#c8c8cc'), ('#5f6368', '#a0a0a6'), ('#80868b', '#8a8a90'), ('#9aa0a6', '#76767c'), ('#bdc1c6', '#5a5a60')]
+
+
+def _darken(css):
+    if open(os.path.expanduser("~/.config/cherrystone/theme")).read().strip() != "dark":
+        return css
+    s = css.decode()
+    s = re.sub(r"(?<![-.\w])color: #ffffff", "color: @KEEPWHITE@", s)
+    for i, (a, _) in enumerate(_DARK):
+        s = re.sub(a, "@C%d@" % i, s, flags=re.I)
+    for i, (_, b) in enumerate(_DARK):
+        s = s.replace("@C%d@" % i, b)
+    return s.replace("@KEEPWHITE@", "#ffffff").encode()
+
+
 p = Gtk.CssProvider()
-p.load_from_data(CSS)
-Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), p, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+try:
+    p.load_from_data(_darken(CSS))
+except OSError:
+    p.load_from_data(CSS)
+Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), p, Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
 win.add(box)
 win.show_all()
 Gtk.main()

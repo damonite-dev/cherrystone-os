@@ -155,7 +155,7 @@ makefile root:root 0755 "$tmp"/etc/local.d/chime.stop <<'EOF'
 f=/usr/share/cherrystone/shutdown.wav
 [ -f "$f" ] || exit 0
 [ -f /home/cherrystone/.config/cherrystone/no-sound ] && exit 0
-timeout 5 aplay -q "$f" 2>/dev/null
+timeout 7 aplay -q "$f" 2>/dev/null
 exit 0
 EOF
 

@@ -65,6 +65,7 @@ progressbar trough { min-height: 8px; border-radius: 0; background: #f1f3f4; bor
 progressbar progress { min-height: 8px; border-radius: 0; background: #d81e3c; border: none; }
 /* smooth hover and a darker press, like a real button */
 button, list.cherry row, flowbox flowboxchild { transition: background-color 150ms ease-out, color 150ms ease-out; }
+button label, button image { transition: none; -gtk-icon-transform: none; }
 button.main:active { background: #8e0f26; }
 button.plain:active, button.round:active, button.icon:active, list.cherry row:active { background: #f9c9d2; }
 """
@@ -696,7 +697,21 @@ def pick_picture(parent):
 
 def wallpaper():
     W = "/usr/share/backgrounds/cherrystone"
-    win, box = window("Wallpaper", "preferences-desktop-wallpaper", 460)
+    # Personalize: how Cherrystone looks (dark mode, wallpaper)
+    win, box = window("Personalize", "preferences-desktop-wallpaper", 460)
+    row = Gtk.Box(spacing=12)
+    t = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+    t.pack_start(label("Dark mode", "bold"), False, False, 0)
+    t.pack_start(label("Dark windows, menus and home page. Apps that are open change when you "
+                       "open them again.", "small", wrap=True), False, False, 0)
+    row.pack_start(t, True, True, 0)
+    dk = Gtk.Switch()
+    dk.set_valign(Gtk.Align.CENTER)
+    dk.set_active(read(CONF + "/theme", "light").strip() == "dark")
+    dk.connect("notify::active", lambda s, *_: run(["cherrystone-theme", "dark" if s.get_active() else "light"]))
+    row.pack_end(dk, False, False, 0)
+    box.pack_start(row, False, False, 0)
+    box.pack_start(label("Wallpaper", "bold"), False, False, 0)
     box.pack_start(label("Shows behind the sign-in screen, the lock screen and the home page.", "sub", wrap=True),
                    False, False, 0)
     fb = Gtk.FlowBox()
@@ -771,23 +786,117 @@ def display():
         box.pack_start(scale_row("display-brightness-symbolic", brightness(), 5,
                                  lambda v: run(["doas", "/usr/bin/brightnessctl", "-c", "backlight", "-q", "set", "%d%%" % v])),
                        False, False, 0)
-    box.pack_start(label("Text size", "bold"), False, False, 0)
-    cur = read(CONF + "/textsize", "100")
-    seg = Gtk.Box(spacing=6)
-    first = None
-    for name, v in (("Normal", "100"), ("Large", "115"), ("Larger", "130")):
-        rb = Gtk.RadioButton.new_with_label_from_widget(first, name)
-        first = first or rb
-        rb.set_mode(False)
-        rb.get_style_context().add_class("seg")
-        rb.set_active(v == cur or (cur not in ("115", "130") and v == "100"))
-        rb.connect("toggled", lambda b, v=v: b.get_active() and set_size(v))
-        seg.pack_start(rb, False, False, 0)
-    box.pack_start(seg, False, False, 0)
+    # Resolution: every mode the screen reports (with no graphics driver
+    # that's often just a few, but it's still a choice)
+    outs = [l.split()[0] for l in out("xrandr --query").splitlines() if " connected" in l]
+    if outs:
+        main = outs[0]
+        modes, cur_mode, seen = [], None, set()
+        grab = False
+        for l in out("xrandr --query").splitlines():
+            if not l.startswith(" "):
+                grab = l.split()[0] == main
+                continue
+            if grab:
+                m = l.split()[0]
+                if "x" in m and m not in seen:
+                    seen.add(m)
+                    modes.append(m)
+                    if "*" in l:
+                        cur_mode = m
+        if modes:
+            box.pack_start(label("Resolution", "bold"), False, False, 0)
+            rc = Gtk.ComboBoxText()
+            for m in modes:
+                rc.append(m, m.replace("x", " × ") + ("  (recommended)" if m == modes[0] else ""))
+            rc.set_active_id(cur_mode or modes[0])
+            state = {"old": cur_mode or modes[0], "busy": False}
 
-    def set_size(v):
-        write(CONF + "/textsize", v + "\n")
-        notify("Text size", "Sign out and back in to see the new size.", "preferences-desktop-display")
+            def set_res(c):
+                m = c.get_active_id()
+                if state["busy"] or not m or m == state["old"]:
+                    return
+                run(["xrandr", "--output", main, "--mode", m])
+                d = Gtk.MessageDialog(transient_for=win, modal=True, message_type=Gtk.MessageType.QUESTION,
+                                      buttons=Gtk.ButtonsType.NONE, text="Keep this resolution?")
+                d.add_buttons("Go back", Gtk.ResponseType.CANCEL, "Keep", Gtk.ResponseType.OK)
+                left = {"n": 15}
+                d.format_secondary_text("Going back in %d seconds." % left["n"])
+
+                def tick():
+                    left["n"] -= 1
+                    if left["n"] <= 0:
+                        d.response(Gtk.ResponseType.CANCEL)
+                        return False
+                    d.format_secondary_text("Going back in %d seconds." % left["n"])
+                    return True
+                tid = GLib.timeout_add_seconds(1, tick)
+                r = d.run()
+                GLib.source_remove(tid) if left["n"] > 0 else None
+                d.destroy()
+                if r == Gtk.ResponseType.OK:
+                    state["old"] = m
+                    write(CONF + "/resolution", "%s %s" % (main, m) + chr(10))
+                    run("cherrystone-home")
+                else:
+                    run(["xrandr", "--output", main, "--mode", state["old"]])
+                    state["busy"] = True
+                    c.set_active_id(state["old"])
+                    state["busy"] = False
+            rc.connect("changed", set_res)
+            box.pack_start(rc, False, False, 0)
+
+    # Night light: warmer colours, easier on the eyes at night
+    row = Gtk.Box(spacing=12)
+    t = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+    t.pack_start(label("Night light", "bold"), False, False, 0)
+    t.pack_start(label("Warmer colours, less blue. Easier on your eyes in the evening.", "small", wrap=True),
+                 False, False, 0)
+    row.pack_start(t, True, True, 0)
+    nl = Gtk.Switch()
+    nl.set_valign(Gtk.Align.CENTER)
+    nl.set_active(read(CONF + "/nightlight", "off").strip() == "on")
+
+    def night(s, *_):
+        on = s.get_active()
+        write(CONF + "/nightlight", ("on" if on else "off") + chr(10))
+        for o in [l.split()[0] for l in out("xrandr --query").splitlines() if " connected" in l]:
+            run(["xrandr", "--output", o, "--gamma", "1:0.82:0.64" if on else "1:1:1"])
+    nl.connect("notify::active", night)
+    row.pack_end(nl, False, False, 0)
+    box.pack_start(row, False, False, 0)
+
+    # Size: makes text and controls bigger or smaller, 80% to 150%
+    box.pack_start(label("Size", "bold"), False, False, 0)
+    try:
+        cur = max(80, min(150, int(read(CONF + "/textsize", "100").strip())))
+    except ValueError:
+        cur = 100
+    srow = Gtk.Box(spacing=10)
+    sval = label("%d%%" % cur, "small")
+    sc = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 80, 150, 5)
+    sc.set_draw_value(False)
+    sc.set_value(cur)
+    for mk in (80, 100, 125, 150):
+        sc.add_mark(mk, Gtk.PositionType.BOTTOM, None)
+    pend = {}
+
+    def size_changed(s):
+        v = int(round(s.get_value() / 5) * 5)
+        sval.set_text("%d%%" % v)
+        if "id" in pend:
+            GLib.source_remove(pend.pop("id"))
+
+        def save():
+            pend.pop("id", None)
+            write(CONF + "/textsize", "%d" % v + chr(10))
+            notify("Size", "Sign out and back in to see the new size.", "preferences-desktop-display")
+            return False
+        pend["id"] = GLib.timeout_add(900, save)
+    sc.connect("value-changed", size_changed)
+    srow.pack_start(sc, True, True, 0)
+    srow.pack_start(sval, False, False, 0)
+    box.pack_start(srow, False, False, 0)
 
     row = Gtk.Box(spacing=12)
     t = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -812,6 +921,7 @@ def display():
     sw.connect("notify::active", animations)
     row.pack_end(sw, False, False, 0)
     box.pack_start(row, False, False, 0)
+
 
     outs = [l.split()[0] for l in out("xrandr --query").splitlines() if " connected" in l]
     if len(outs) > 1:
@@ -1403,7 +1513,7 @@ def linuxapps():
     win, box = window("Advanced tools", "utilities-terminal", 420)
     f = CONF + "/linux-apps"
     box.pack_start(label("For people who know Linux: a Terminal and a Task Manager in the "
-                         "launcher, Ctrl+Alt+T, and opening folders as root in Files. "
+                         "launcher, Ctrl+Alt+T, and the whole system (and hidden files) in Files. "
                          "Most people never need these.", "sub", wrap=True), False, False, 0)
     row = Gtk.Box(spacing=12)
     row.pack_start(label("Show advanced tools", "bold"), True, True, 0)
@@ -1412,10 +1522,16 @@ def linuxapps():
     sw.set_active(os.path.exists(f))
 
     def flip(s, *_):
-        if s.get_active():
+        on = s.get_active()
+        if on:
             write(f, "")
         elif os.path.exists(f):
             os.remove(f)
+        # Files: the whole system (/, /var, /etc...) and hidden files only with this on
+        v = "1" if on else "0"
+        run("sed -i 's/^places_root=.*/places_root=%s/' ~/.config/libfm/libfm.conf; "
+            "sed -i 's/^show_hidden=.*/show_hidden=%s/' ~/.config/pcmanfm/default/pcmanfm.conf; "
+            "pkill -x pcmanfm; sleep 1; pcmanfm --daemon-mode" % (v, v))
     sw.connect("notify::active", flip)
     row.pack_end(sw, False, False, 0)
     box.pack_start(row, False, False, 0)
@@ -1639,9 +1755,28 @@ SCREENS = {"wifi": wifi, "power": power, "password": password, "notifications": 
            "about": about, "shortcuts": shortcuts, "tiles": tiles, "install": install,
            "save": save, "reset": reset, "linuxapps": linuxapps, "recovery": recovery}
 
+# Dark mode (Settings > Personalize): the same colour swap as the rest of Cherrystone
+_DARK = [('#ffffff', '#18181a'), ('#f8f9fa', '#1e1e21'), ('#f1f3f4', '#26262a'), ('#e8eaed', '#303035'), ('#dadce0', '#3c3c42'), ('#d7d9dc', '#303035'), ('#c4c7cc', '#3c3c42'), ('#fde4e8', '#4a1a26'), ('#fbe3e8', '#4a1a26'), ('#f9c9d2', '#5c1f2e'), ('#202124', '#ececef'), ('#3c4043', '#c8c8cc'), ('#5f6368', '#a0a0a6'), ('#80868b', '#8a8a90'), ('#9aa0a6', '#76767c'), ('#bdc1c6', '#5a5a60')]
+
+
+def _darken(css):
+    if open(os.path.expanduser("~/.config/cherrystone/theme")).read().strip() != "dark":
+        return css
+    s = css.decode()
+    s = re.sub(r"(?<![-.\w])color: #ffffff", "color: @KEEPWHITE@", s)
+    for i, (a, _) in enumerate(_DARK):
+        s = re.sub(a, "@C%d@" % i, s, flags=re.I)
+    for i, (_, b) in enumerate(_DARK):
+        s = s.replace("@C%d@" % i, b)
+    return s.replace("@KEEPWHITE@", "#ffffff").encode()
+
+
 if __name__ == "__main__":
     prov = Gtk.CssProvider()
-    prov.load_from_data(CSS)
+    try:
+        prov.load_from_data(_darken(CSS))
+    except OSError:
+        prov.load_from_data(CSS)
     Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), prov,
                                              Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
     args = sys.argv[1:] or ["about"]

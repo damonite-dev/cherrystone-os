@@ -69,7 +69,7 @@ css.load_from_data(b"""
 .name { font-size: 20px; font-weight: bold; color: #202124; }
 .hint { background: rgba(255,255,255,0.9); border-radius: 0; padding: 6px 16px; color: #3c4043; }
 """)
-Gtk.StyleContext.add_provider_for_screen(scr, css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+Gtk.StyleContext.add_provider_for_screen(scr, css, Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
 
 win = Gtk.OffscreenWindow()
 ov = Gtk.Overlay()

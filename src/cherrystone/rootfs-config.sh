@@ -153,13 +153,12 @@ makefile root:root 0644 "$tmp"/etc/skel/.config/openbox/menu.xml <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <openbox_menu xmlns="http://openbox.org/3.4/menu">
 <menu id="root-menu" label="Cherrystone">
-  <item label="Web Browser"><action name="Execute"><command>cherrystone-browser</command></action></item>
-  <item label="Files"><action name="Execute"><command>pcmanfm</command></action></item>
-  <item label="Text Editor"><action name="Execute"><command>mousepad</command></action></item>
-  <item label="Calculator"><action name="Execute"><command>cherrystone-calculator</command></action></item>
+  <item label="Personalize"><action name="Execute"><command>cherrystone-wallpaper</command></action></item>
+  <item label="Display settings"><action name="Execute"><command>cherrystone-display</command></action></item>
   <separator />
-  <item label="Settings"><action name="Execute"><command>cherrystone-settings</command></action></item>
+  <item label="Take a screenshot"><action name="Execute"><command>cherrystone-screenshot</command></action></item>
   <separator />
+  <item label="Lock"><action name="Execute"><command>cherrystone-lock</command></action></item>
   <item label="Sign out"><action name="Exit"><prompt>no</prompt></action></item>
   <item label="Restart"><action name="Execute"><command>doas /sbin/reboot</command></action></item>
   <item label="Shut down"><action name="Execute"><command>doas /sbin/poweroff</command></action></item>
@@ -293,6 +292,7 @@ button.suggested-action:hover { background: #b3122f; }
 entry { border-radius: 0; }
 button.suggested-action { background: #d81e3c; background-image: none; color: #ffffff; border-color: #b3122f; }
 button, row, menuitem { transition: background-color 150ms ease-out, color 150ms ease-out; }
+button label, button image { transition: none; -gtk-icon-transform: none; }
 /* Flat: no bevels, gradients or shadows anywhere, square corners */
 * { box-shadow: none; text-shadow: none; -gtk-icon-shadow: none; }
 button, combobox button, spinbutton button, headerbar, menubar, toolbar, notebook > header, tab {
@@ -517,10 +517,13 @@ case "$h" in 0[5-9]|1[01]) hi="Good morning" ;; 1[2-7]) hi="Good afternoon" ;; *
 name="$(head -n1 ~/.config/cherrystone/name 2>/dev/null | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g')"
 [ "$USER" = guest ] && name=""
 greeting="$hi${name:+, $name}"
+dark=""
+[ "$(cat ~/.config/cherrystone/theme 2>/dev/null)" = dark ] &&
+	dark="* { bg: #18181a; field: #26262a; fg: #ececef; dim: #a0a0a6; hover: #4a1a26; }"
 choice="$(while IFS='|' read -r name icon cmd; do
 		printf '%s\0icon\037%s\n' "$name" "$icon"
 	done < "$apps" |
-	rofi -dmenu -i -p "" -mesg "$greeting" -theme /usr/share/cherrystone/launcher.rasi)"
+	rofi -dmenu -i -p "" -mesg "$greeting" -theme /usr/share/cherrystone/launcher.rasi ${dark:+-theme-str "$dark"})"
 [ -n "$choice" ] || exit 0
 cmd="$(awk -F'|' -v n="$choice" '$1 == n { print $3; exit }' "$apps")"
 [ -n "$cmd" ] && exec sh -c "$cmd"
@@ -567,11 +570,23 @@ xsetroot -cursor_name left_ptr
 # smaller text and controls so more of the page fits
 # smaller text and controls so more of the page fits; Settings > Display >
 # Text size makes everything bigger on top of that
+# Settings > Display > Resolution: "OUTPUT WIDTHxHEIGHT", put back at sign-in
+res="$(cat ~/.config/cherrystone/resolution 2>/dev/null)"
+[ -n "$res" ] && xrandr --output "${res%% *}" --mode "${res#* }" 2>/dev/null
+# Night light (Settings > Display): warmer colours on every screen
+if [ "$(cat ~/.config/cherrystone/nightlight 2>/dev/null)" = on ]; then
+	for o in $(xrandr --query 2>/dev/null | awk '/ connected/ { print $1 }'); do
+		xrandr --output "$o" --gamma 1:0.82:0.64 2>/dev/null
+	done
+fi
+# Keyboard layout picked in setup or Settings
+kb="$(cat ~/.config/cherrystone/keyboard 2>/dev/null)"
+[ -n "$kb" ] && setxkbmap -layout "$kb" 2>/dev/null
 h="$(xrandr --current 2>/dev/null | awk '/\*/ { split($1, a, "x"); print a[2]; exit }')"
 scale=100
 [ "${h:-768}" -le 640 ] && scale=90
 size="$(cat ~/.config/cherrystone/textsize 2>/dev/null)"
-case "$size" in 115|130) scale=$(( scale * size / 100 )) ;; esac
+case "$size" in [5-9][0-9]|1[0-9][0-9]|200) scale=$(( scale * size / 100 )) ;; esac
 if [ "$scale" != 100 ]; then
 	CHERRYSTONE_SCALE="$(awk -v s="$scale" 'BEGIN { printf "%.2f", s / 100 }')"
 	export CHERRYSTONE_SCALE GDK_DPI_SCALE="$CHERRYSTONE_SCALE"
@@ -583,7 +598,12 @@ fi
 mem="$(awk '/^MemTotal:/ { print $2; exit }' /proc/meminfo)"
 if [ "${mem:-0}" -le 2100000 ] || [ ! -e /dev/dri/renderD128 ]; then
 	export WEBKIT_DISABLE_COMPOSITING_MODE=1
-	export CHERRYSTONE_OLD_PC=1     # also: animations start off (Settings > Display)
+fi
+# Animations start off (Settings > Display) only on really old computers:
+# 2 GB or less, or one processor core. They're simple enough for any newer
+# CPU to draw, even without a graphics driver (like a VirtualBox VM).
+if [ "${mem:-0}" -le 2100000 ] || [ "$(nproc 2>/dev/null || echo 1)" -le 1 ]; then
+	export CHERRYSTONE_OLD_PC=1
 fi
 # A private folder for this session's sockets (PipeWire's sound needs one)
 if [ -z "$XDG_RUNTIME_DIR" ]; then
@@ -915,6 +935,81 @@ entry:focus { background: #ffffff; border-color: #d81e3c; }
 entry progress { background: none; border-bottom: 2px solid #d81e3c; border-radius: 0; }
 EOF
 
+# ------------------------------------------------------------- dark mode
+# Settings > Personalize > Dark mode runs cherrystone-theme, which copies one of
+# these sets into place. The dark set is the light one with its colours swapped.
+T="$tmp"/usr/share/cherrystone/theme
+mkdir -p "$T/light" "$T/dark" "$tmp"/usr/share/themes/Cherrystone-Dark/openbox-3
+makefile root:root 0644 "$T/dark.sed" <<'EOF'
+# Cherrystone: light colours -> dark (white text on cherry stays white)
+s/\([ {;]\)color: #ffffff/\1color: @KEEPWHITE@/g
+s/image\.color: #ffffff/image.color: @KEEPWHITE@/g
+s/fg_color #ffffff/fg_color @KEEPWHITE@/g
+s/foreground = "#ffffff"/foreground = "@KEEPWHITE@"/g
+s/#ffffff/@C0@/gI
+s/#f8f9fa/@C1@/gI
+s/#f1f3f4/@C2@/gI
+s/#e8eaed/@C3@/gI
+s/#dadce0/@C4@/gI
+s/#d7d9dc/@C5@/gI
+s/#c4c7cc/@C6@/gI
+s/#fde4e8/@C7@/gI
+s/#fbe3e8/@C8@/gI
+s/#f9c9d2/@C9@/gI
+s/#202124/@C10@/gI
+s/#3c4043/@C11@/gI
+s/#5f6368/@C12@/gI
+s/#80868b/@C13@/gI
+s/#9aa0a6/@C14@/gI
+s/#bdc1c6/@C15@/gI
+s/@C0@/#18181a/g
+s/@C1@/#1e1e21/g
+s/@C2@/#26262a/g
+s/@C3@/#303035/g
+s/@C4@/#3c3c42/g
+s/@C5@/#303035/g
+s/@C6@/#3c3c42/g
+s/@C7@/#4a1a26/g
+s/@C8@/#4a1a26/g
+s/@C9@/#5c1f2e/g
+s/@C10@/#ececef/g
+s/@C11@/#c8c8cc/g
+s/@C12@/#a0a0a6/g
+s/@C13@/#8a8a90/g
+s/@C14@/#76767c/g
+s/@C15@/#5a5a60/g
+s/@KEEPWHITE@/#ffffff/g
+EOF
+cp "$tmp"/etc/skel/.config/gtk-3.0/gtk.css "$tmp"/etc/skel/.local/share/badwolf/interface.css "$T/light/"
+sed -f "$T/dark.sed" "$tmp"/etc/skel/.config/gtk-3.0/gtk.css > "$T/dark/gtk.css"
+sed -f "$T/dark.sed" "$tmp"/etc/skel/.local/share/badwolf/interface.css > "$T/dark/interface.css"
+sed -f "$T/dark.sed" "$tmp"/usr/share/themes/Cherrystone/openbox-3/themerc \
+	> "$tmp"/usr/share/themes/Cherrystone-Dark/openbox-3/themerc
+chmod 0644 "$T"/light/* "$T"/dark/* "$tmp"/usr/share/themes/Cherrystone-Dark/openbox-3/themerc
+
+makefile root:root 0755 "$tmp"/usr/local/bin/cherrystone-theme <<'EOF'
+#!/bin/sh
+# cherrystone-theme light|dark   (no argument: put the saved one back in place)
+t="${1:-$(cat ~/.config/cherrystone/theme 2>/dev/null)}"
+[ "$t" = dark ] || t=light
+D=/usr/share/cherrystone/theme/$t
+mkdir -p ~/.config/cherrystone ~/.config/gtk-3.0 ~/.local/share/badwolf
+echo "$t" > ~/.config/cherrystone/theme
+cp "$D/gtk.css" ~/.config/gtk-3.0/gtk.css
+cp "$D/interface.css" ~/.local/share/badwolf/interface.css
+dark=0; ob=Cherrystone
+[ "$t" = dark ] && { dark=1; ob=Cherrystone-Dark; }
+[ -f ~/.config/gtk-3.0/settings.ini ] &&
+	sed -i "s/^gtk-application-prefer-dark-theme=.*/gtk-application-prefer-dark-theme=$dark/" ~/.config/gtk-3.0/settings.ini
+[ -f ~/.config/openbox/rc.xml ] &&
+	sed -i "/<theme>/,/<\/theme>/ s|<name>Cherrystone[^<]*</name>|<name>$ob</name>|" ~/.config/openbox/rc.xml
+if [ -n "$DISPLAY" ]; then
+	openbox --reconfigure 2>/dev/null
+	cherrystone-home 2>/dev/null
+fi
+exit 0
+EOF
+
 
 # ---------------------------------------------------------------- hardware keys
 
@@ -1047,144 +1142,8 @@ ln -sf "/usr/share/zoneinfo/$zone" /etc/localtime
 echo "$zone" > /etc/timezone
 EOF
 
-makefile root:root 0755 "$tmp"/usr/local/bin/cherrystone-welcome <<'EOF'
-#!/usr/bin/env python3
-# Welcome screen shown at startup: keyboard layout, time zone, Wi-Fi hint.
-# "cherrystone-welcome --settings" shows the same choices from Settings.
-# Enter (or the button) continues.
-import os
-import subprocess
-import sys
-
-import gi
-gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk
-
-GLib.set_prgname("CherryWelcome")   # window class Cherry*: the window manager focuses it
-SETTINGS = "--settings" in sys.argv[1:]
-LAYOUTS = ("us gb de fr es it pt br latam ca nl be ch at se no dk fi is ie pl cz sk hu ro bg "
-           "gr tr ru ua by lt lv ee si hr rs il ara in jp kr cn th vn").split()
-
-
-def current_layout():
-    try:
-        out = subprocess.run(["setxkbmap", "-query"], capture_output=True, text=True).stdout
-        for line in out.splitlines():
-            if line.startswith("layout:"):
-                return line.split()[1].split(",")[0]
-    except OSError:
-        pass
-    return "us"
-
-
-def read(path, default=""):
-    try:
-        with open(path) as f:
-            return f.read().strip() or default
-    except OSError:
-        return default
-
-
-def zones():
-    found = set()
-    try:
-        with open("/usr/share/zoneinfo/zone1970.tab") as f:
-            for line in f:
-                if not line.startswith("#") and len(line.split("\t")) >= 3:
-                    found.add(line.split("\t")[2].strip())
-    except OSError:
-        pass
-    return ["UTC"] + sorted(found)
-
-
-def combo(items, current):
-    box = Gtk.ComboBoxText()
-    for item in items:
-        box.append_text(item)
-    box.set_active(items.index(current) if current in items else 0)
-    return box
-
-
-win = Gtk.Window(title="Keyboard and time zone" if SETTINGS else "Welcome to Cherrystone")
-win.set_icon_name("cherrystone")
-win.set_position(Gtk.WindowPosition.CENTER)
-win.set_resizable(False)
-win.set_border_width(20)
-win.connect("destroy", Gtk.main_quit)
-
-outer = Gtk.Box(spacing=18)
-outer.pack_start(Gtk.Image.new_from_file("/usr/share/cherrystone/stony/stony-excited-small.png"), False, False, 0)
-col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-outer.pack_start(col, True, True, 0)
-
-title = Gtk.Label(xalign=0)
-if SETTINGS:
-    title.set_markup("<b>Keyboard and time zone</b>")
-else:
-    title.set_markup("<span size='x-large' weight='bold'>Welcome to Cherrystone</span>")
-col.pack_start(title, False, False, 0)
-if not SETTINGS:
-    col.pack_start(Gtk.Label(xalign=0, label="Get online, then pick your keyboard layout and time zone."),
-                   False, False, 0)
-
-grid = Gtk.Grid(column_spacing=12, row_spacing=8)
-cur_kb, cur_tz = current_layout(), read("/etc/timezone", "UTC")
-tz_list = zones()
-kb_box, tz_box = combo(LAYOUTS, cur_kb), combo(tz_list, cur_tz)
-for row, (label, box) in enumerate((("Keyboard layout", kb_box), ("Time zone", tz_box))):
-    grid.attach(Gtk.Label(label=label, xalign=0), 0, row, 1, 1)
-    box.set_hexpand(True)
-    grid.attach(box, 1, row, 1, 1)
-col.pack_start(grid, False, False, 0)
-
-# Internet: shows whether you're online, with a button to pick a Wi-Fi network
-if not SETTINGS:
-    net_label = Gtk.Label(xalign=0)
-    wifi = Gtk.Button(label="Connect to Wi-Fi")
-    wifi.connect("clicked", lambda *_: subprocess.Popen(["cherrystone-wifi"]))
-
-    def refresh():
-        r = subprocess.run(["nmcli", "-t", "-f", "STATE", "general"], capture_output=True, text=True)
-        on = r.stdout.strip() == "connected"
-        net_label.set_markup("<b>Connected</b>" if on else "Not connected")
-        wifi.set_visible(not on)
-        return True
-    grid.attach(Gtk.Label(label="Internet", xalign=0), 0, 2, 1, 1)
-    nbox = Gtk.Box(spacing=10)
-    nbox.pack_start(net_label, False, False, 0)
-    nbox.pack_end(wifi, False, False, 0)
-    grid.attach(nbox, 1, 2, 1, 1)
-    GLib.timeout_add_seconds(3, refresh)
-
-go = Gtk.Button(label="Apply" if SETTINGS else "Done")
-go.set_can_default(True)
-go.get_style_context().add_class("suggested-action")
-row = Gtk.Box()
-row.pack_end(go, False, False, 0)
-col.pack_start(row, False, False, 4)
-
-
-def done(*args):
-    kb, tz = kb_box.get_active_text(), tz_box.get_active_text()
-    os.makedirs(os.path.expanduser("~/.config/cherrystone"), exist_ok=True)
-    open(os.path.expanduser("~/.config/cherrystone/welcomed"), "a").close()
-    if kb in LAYOUTS and kb != cur_kb:
-        subprocess.run(["setxkbmap", "-layout", kb])
-    if tz and tz != cur_tz:
-        if subprocess.run(["doas", "/usr/local/sbin/cherrystone-settz", tz]).returncode == 0:
-            subprocess.run(["pkill", "-USR1", "-x", "tint2"])   # the clock picks up the new zone
-    Gtk.main_quit()
-
-
-go.connect("clicked", done)
-win.add(outer)
-win.set_default(go)
-win.show_all()
-if not SETTINGS:
-    refresh()
-go.grab_focus()          # Enter = Done
-Gtk.main()
-EOF
+# First-run setup (OOBE): welcome.py, next to these scripts
+install -m 0755 "$BRAND"/../welcome.py "$tmp"/usr/local/bin/cherrystone-welcome
 
 makefile root:root 0755 "$tmp"/usr/local/bin/cherrystone-about <<'EOF'
 #!/bin/sh

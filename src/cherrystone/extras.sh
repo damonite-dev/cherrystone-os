@@ -85,7 +85,7 @@ body { background: #ffffff; color: #202124; font-family: Cantarell, "DejaVu Sans
 .logo { margin-top: 36px; width: 48px; height: 48px; padding: 8px; background: #ffffff; }
 h1 { font-weight: 300; font-size: 34px; margin: 6px 0 22px; letter-spacing: -0.5px; }
 input { width: 480px; padding: 12px 18px; font-size: 15px; color: #202124;
-        background: #f1f3f4; border: 1px solid #f1f3f4; border-radius: 24px; outline: none;
+        background: #f1f3f4; border: 1px solid #f1f3f4; border-radius: 0; outline: none;
         box-shadow: none; }
 input { background: #ffffff; border-color: #ffffff; }
 input:focus { background: #ffffff; border-color: #ffffff; outline: 3px solid #b3122f; }
@@ -118,6 +118,15 @@ a.stony span { position: absolute; left: 50%; bottom: 48px; transform: translate
              background: #202124; color: #ffffff; font-size: 12px; padding: 5px 10px; border-radius: 0;
              opacity: 0; transition: opacity 150ms ease-out; pointer-events: none; }
 a.stony:hover span, a.stony:focus span { opacity: 1; }
+HTML
+[ "$(cat ~/.config/cherrystone/theme 2>/dev/null)" = dark ] && cat <<HTML
+body { background-color: #18181a; color: #ececef; }
+.hint, .edit a { color: #a0a0a6; }
+input { color: #202124; }
+.wall .wrap { background: rgba(24, 24, 26, 0.94); }
+a.app:hover, a.app:focus { outline-color: #ececef; }
+HTML
+cat <<HTML
 </style></head><body${bg:+ class="wall"}><div class="wrap"><div class="top">
 HTML
 [ -n "$offline" ] && echo '<div class="off"><img src="file:///usr/share/cherrystone/stony/stony-sad-small.png" alt="" style="height:20px;vertical-align:-5px;margin-right:6px;image-rendering:pixelated">You&#39;re offline.<a href="cherrystone:wifi">Connect to Wi-Fi</a><a href="file:///usr/share/cherrystone/cherry-run.html">Play Cherry Run</a></div>'
@@ -332,7 +341,7 @@ class SignIn(Gtk.Window):
 
         style = Gtk.CssProvider()
         style.load_from_data(CSS)
-        Gtk.StyleContext.add_provider_for_screen(screen, style, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+        Gtk.StyleContext.add_provider_for_screen(screen, style, Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
 
         overlay = Gtk.Overlay()
         self.add(overlay)
