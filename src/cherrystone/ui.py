@@ -54,7 +54,10 @@ entry { border-radius: 0; padding: 6px 14px; }
 entry:focus { border-color: #d81e3c; box-shadow: inset 0 0 0 1px #d81e3c; }
 scale highlight { background: #d81e3c; }
 scale slider { background: #ffffff; border: 2px solid #d81e3c; }
+switch { background: #ffffff; border: 2px solid #202124; border-radius: 0; }
+switch slider { background: #202124; border: none; border-radius: 0; min-width: 18px; min-height: 18px; margin: 1px; }
 switch:checked { background: #d81e3c; border-color: #d81e3c; }
+switch:checked slider { background: #ffffff; }
 flowbox flowboxchild { padding: 6px; border-radius: 0; }
 flowbox flowboxchild:hover { background: #f8eef0; }
 flowbox flowboxchild:selected { background: #fde4e8; }

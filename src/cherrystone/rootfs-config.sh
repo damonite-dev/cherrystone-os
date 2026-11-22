@@ -308,8 +308,15 @@ entry:focus, spinbutton:focus { background-color: #ffffff; border-color: #d81e3c
 check, radio { background-image: none; background-color: #ffffff; border: 2px solid #5f6368; border-radius: 0; }
 radio { border-radius: 100px; }
 check:checked, radio:checked { border-color: #d81e3c; color: #ffffff; }
-switch { background-image: none; border-radius: 0; border: none; background-color: #dadce0; }
-switch slider { background-image: none; border-radius: 0; border: none; background-color: #ffffff; }
+/* Switches: black outline and knob when off, solid cherry when on (easy to see) */
+switch { background-image: none; border-radius: 0; border: 2px solid #202124; background-color: #ffffff;
+	min-width: 44px; min-height: 20px; }
+switch slider { background-image: none; border-radius: 0; border: none; background-color: #202124;
+	min-width: 18px; min-height: 18px; margin: 1px; }
+switch:checked { background-color: #d81e3c; border-color: #d81e3c; }
+switch:checked slider { background-color: #ffffff; }
+switch:disabled { border-color: #bdc1c6; }
+switch:disabled slider { background-color: #bdc1c6; }
 menu, popover, popover.background, .csd popover, tooltip, tooltip.background { border-radius: 0; }
 tooltip, tooltip.background { background-color: #ffffff; border-top: 2px solid #d81e3c; }
 tooltip label { color: #202124; }
