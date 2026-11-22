@@ -355,7 +355,7 @@ def _darken(css):
 p = Gtk.CssProvider()
 try:
     p.load_from_data(_darken(CSS))
-except OSError:
+except Exception:
     p.load_from_data(CSS)
 Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), p, Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
 Notes().show_all()
@@ -365,7 +365,7 @@ EOF
 # ------------------------------------------------------------- Calculator
 makefile root:root 0755 "$tmp"/usr/local/bin/cherrystone-calculator <<'EOF'
 #!/usr/bin/env python3
-import ast, operator
+import ast, operator, os
 import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk
@@ -509,31 +509,44 @@ def _darken(css):
 p = Gtk.CssProvider()
 try:
     p.load_from_data(_darken(CSS))
-except OSError:
+except Exception:
     p.load_from_data(CSS)
 Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), p, Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
 win.add(box)
 win.show_all()
+screen.select_region(0, 0)          # don't open with the number highlighted
+win.set_focus(None)
 Gtk.main()
 EOF
 
 # ----------------------------------------------------------- update check
 # Settings > About > Check for updates, and once per start-up (quietly).
-# The newest version number lives next to the downloads on archive.org.
+# New versions are GitHub releases. This Cherrystone knows the day it was
+# built (/etc/cherrystone-version, YYYYMMDD); a release published more than
+# 3 days after that is newer (a release usually goes up a day or two after
+# its build, so that doesn't count as an update to itself).
 makefile root:root 0755 "$tmp"/usr/local/bin/cherrystone-update <<'EOF'
 #!/bin/sh
 # cherrystone-update [--quiet]: is there a newer Cherrystone?
-mine="$(cat /etc/cherrystone-version 2>/dev/null)"
-latest="$(wget -q -T 15 -O - https://archive.org/download/cherrystone/version.txt 2>/dev/null | head -n1 | tr -dc 0-9)"
-if [ -z "$latest" ]; then
+REPO=damonite-dev/cherrystone-os
+PAGE="https://github.com/$REPO/releases"
+mine="$(cat /etc/cherrystone-version 2>/dev/null | tr -dc 0-9)"
+json="$(wget -q -T 15 -U cherrystone-update -O - "https://api.github.com/repos/$REPO/releases?per_page=1" 2>/dev/null)"
+pub="$(printf '%s' "$json" | grep -o '"published_at": *"[0-9-]*' | head -n1 | grep -o '[0-9]\{4\}-[0-9][0-9]-[0-9][0-9]')"
+name="$(printf '%s' "$json" | grep -o '"name": *"[^"]*' | head -n1 | sed 's/.*"//')"
+if [ -z "$pub" ]; then
 	[ "$1" = --quiet ] || notify-send -i cherrystone "Updates" "Couldn't check. Are you online?"
 	exit 0
 fi
-if [ -n "$mine" ] && [ "$latest" -gt "$mine" ]; then
-	( a="$(notify-send -i cherrystone -t 0 "A new Cherrystone is out" \
-		"Download it, write it to your USB stick, and start from it. Your saved stuff stays." \
-		-A get="Download")"
-	  [ "$a" = get ] && cherrystone-browser https://archive.org/details/cherrystone ) &
+newer=no
+if [ -n "$mine" ]; then
+	a="$(date -d "$(echo "$mine" | sed 's/\(....\)\(..\)\(..\)/\1-\2-\3/')" +%s 2>/dev/null)"
+	b="$(date -d "$pub" +%s 2>/dev/null)"
+	[ -n "$a" ] && [ -n "$b" ] && [ $((b - a)) -gt $((3 * 86400)) ] && newer=yes
+fi
+if [ "$newer" = yes ]; then
+	( act="$(notify-send -i cherrystone -t 0 "${name:-A new Cherrystone} is out" 		"Write it to a USB stick and start from it. On an installed computer, choose Recovery > Repair: your settings and files stay." 		-A get="Download")"
+	  [ "$act" = get ] && cherrystone-browser "$PAGE" ) &
 else
 	[ "$1" = --quiet ] || notify-send -i cherrystone "Updates" "You have the newest Cherrystone."
 fi

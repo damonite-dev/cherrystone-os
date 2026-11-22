@@ -314,9 +314,12 @@ CSS = b"""
 .pod entry { background: #ffffff; color: #202124; border: 2px solid #ffffff; border-radius: 0;
              padding: 6px 12px; box-shadow: none; }
 .pod entry:focus { border-color: #202124; }
-button.go { background: #ffffff; color: #d81e3c; border: none; border-radius: 0; font-weight: bold;
-            padding: 6px 16px; box-shadow: none; text-shadow: none; }
-button.go:hover, button.go:focus { background: #fde4e8; }
+button.go, button.go:focus { background: #ffffff; background-image: none; color: #d81e3c; border: none;
+            border-radius: 0; font-weight: bold; padding: 6px 16px; box-shadow: none; text-shadow: none;
+            outline-color: transparent; }
+button.go label { color: #d81e3c; }
+button.go:hover { background: #f1f3f4; background-image: none; }
+button.go:active { background: #e8eaed; background-image: none; }
 .bar { background-color: rgba(0, 0, 0, 0.45); padding: 4px 8px; }
 .bar button { background: transparent; color: #ffffff; border: none; border-radius: 0;
               box-shadow: none; text-shadow: none; padding: 6px 12px; }
@@ -390,6 +393,10 @@ class SignIn(Gtk.Window):
             self.entry.set_placeholder_text("Password")
             self.entry.set_width_chars(18)
             self.entry.connect("activate", self.sign_in)
+            # an eye at the end of the box: click to see what you typed
+            self.entry.set_icon_from_icon_name(Gtk.EntryIconPosition.SECONDARY, "view-reveal-symbolic")
+            self.entry.set_icon_tooltip_text(Gtk.EntryIconPosition.SECONDARY, "Show password")
+            self.entry.connect("icon-press", self.peek)
             row.pack_start(self.entry, True, True, 0)
             go = Gtk.Button(label="→")
         else:
@@ -402,6 +409,15 @@ class SignIn(Gtk.Window):
         self.oops = Gtk.Label(label="")
         self.oops.get_style_context().add_class("oops")
         pod.pack_start(self.oops, False, False, 0)
+        # "Caps Lock is on" under the box, while it is
+        self.caps = Gtk.Label(label="Caps Lock is on")
+        self.caps.get_style_context().add_class("oops")
+        self.caps.set_no_show_all(True)
+        pod.pack_start(self.caps, False, False, 0)
+        if self.has_password:
+            km = Gdk.Keymap.get_for_display(Gdk.Display.get_default())
+            km.connect("state-changed", lambda k: self.caps.set_visible(k.get_caps_lock_state()))
+            GLib.idle_add(lambda: self.caps.set_visible(km.get_caps_lock_state()) and False)
         overlay.add_overlay(pod)
         self.focus_me = self.entry or go
 
@@ -414,7 +430,7 @@ class SignIn(Gtk.Window):
         guest.connect("clicked", self.guest)
         bar.pack_start(guest, False, False, 0)
         off = Gtk.Button(label="Shut down")
-        off.connect("clicked", lambda *a: subprocess.run(["doas", "/sbin/poweroff"]))
+        off.connect("clicked", lambda *a: subprocess.run(["cherrystone-power", "off"]))
         bar.pack_end(off, False, False, 0)
         overlay.add_overlay(bar)
 
@@ -445,6 +461,13 @@ class SignIn(Gtk.Window):
                 return False
             return True
         GLib.timeout_add(25, step)
+
+    def peek(self, entry, pos, event):
+        show = not entry.get_visibility()
+        entry.set_visibility(show)
+        entry.set_icon_from_icon_name(Gtk.EntryIconPosition.SECONDARY,
+                                      "view-conceal-symbolic" if show else "view-reveal-symbolic")
+        entry.set_icon_tooltip_text(Gtk.EntryIconPosition.SECONDARY, "Hide password" if show else "Show password")
 
     def sign_in(self, *args):
         if not self.has_password:
@@ -578,6 +601,12 @@ while sleep 3; do
 		fi
 	fi
 
+	# Keep the screen on while something is playing (a video, music): the
+	# screen only goes dark when nothing is happening
+	if [ $((tick % 10)) = 0 ] && grep -qs RUNNING /proc/asound/card*/pcm*p/sub*/status; then
+		xset s reset 2>/dev/null
+	fi
+
 	# Updates: once, about 2 minutes after starting (only says something
 	# if there is a new Cherrystone)
 	[ "$tick" = 40 ] && cherrystone-update --quiet &
@@ -614,7 +643,7 @@ while sleep 3; do
 					notify-send -u critical -a Battery -i battery-caution "Battery almost empty" \
 						"Cherrystone will shut down in 1 minute to keep your stuff safe. Plug in the charger to stop it."
 				elif [ $((tick - critical_since)) -ge 20 ]; then
-					sync; doas /sbin/poweroff
+					sync; cherrystone-power off
 				fi
 			elif [ "$cap" -le 10 ] && [ "$warned" != 10 ]; then
 				warned=10

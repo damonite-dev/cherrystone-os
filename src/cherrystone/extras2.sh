@@ -150,10 +150,111 @@ EOF
 if [ -f "$BRAND"/shutdown.wav ]; then
 	cp "$BRAND"/shutdown.wav "$tmp"/usr/share/cherrystone/shutdown.wav
 fi
+# cherrystone-power off|restart: every Shut down and Restart button goes
+# through this. It covers the screen with a goodbye (black, the cherry,
+# "shutting down..." in big light letters), plays the shutdown sound right
+# then, and turns the computer off when the sound is done.
+makefile root:root 0755 "$tmp"/usr/local/bin/cherrystone-power <<'EOF'
+#!/usr/bin/env python3
+import os
+import subprocess
+import sys
+import threading
+
+what = sys.argv[1] if len(sys.argv) > 1 else "off"
+cmd = ["doas", "/sbin/reboot"] if what == "restart" else ["doas", "/sbin/poweroff"]
+SOUND = "/usr/share/cherrystone/shutdown.wav"
+quiet = os.path.exists(os.path.expanduser("~/.config/cherrystone/no-sound"))
+
+
+def finish(*_):
+    subprocess.run(["sync"])
+    os.execvp(cmd[0], cmd)
+
+
+def go(*_):
+    # start shutting down, but keep the goodbye on screen until the
+    # system closes it (otherwise the desktop flashes back for a moment)
+    subprocess.run(["sync"])
+    subprocess.Popen(cmd)
+    return False
+
+
+try:
+    import gi
+    gi.require_version("Gtk", "3.0")
+    gi.require_version("Gdk", "3.0")
+    from gi.repository import Gdk, GLib, Gtk
+    if not os.environ.get("DISPLAY"):
+        raise RuntimeError("no screen")
+except Exception:
+    finish()
+
+css = Gtk.CssProvider()
+css.load_from_data(b"""
+window.bye { background: #000000; }
+.bye label { color: #ffffff; font-size: 34px; font-weight: 300; }
+.bye .dots { color: #d81e3c; }
+""")
+Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_USER + 2)
+
+win = Gtk.Window()
+win.get_style_context().add_class("bye")
+win.set_decorated(False)
+win.set_keep_above(True)
+win.fullscreen()
+box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=26)
+box.set_halign(Gtk.Align.CENTER)
+box.set_valign(Gtk.Align.CENTER)
+try:
+    from gi.repository import GdkPixbuf
+    pic = GdkPixbuf.Pixbuf.new_from_file_at_scale("/usr/share/icons/hicolor/256x256/apps/cherrystone.png", 140, 140, True)
+    box.pack_start(Gtk.Image.new_from_pixbuf(pic), False, False, 0)
+except Exception:
+    pass
+row = Gtk.Box()
+row.set_halign(Gtk.Align.CENTER)
+row.pack_start(Gtk.Label(label="restarting" if what == "restart" else "shutting down"), False, False, 0)
+dots = Gtk.Label(label="")
+dots.get_style_context().add_class("dots")
+dots.set_width_chars(3)
+dots.set_xalign(0)
+row.pack_start(dots, False, False, 0)
+box.pack_start(row, False, False, 0)
+win.add(box)
+win.connect("delete-event", lambda *_: True)
+win.show_all()
+
+n = {"i": 0}
+
+
+def tick():
+    n["i"] = (n["i"] + 1) % 4
+    dots.set_text("." * n["i"])
+    return True
+GLib.timeout_add(400, tick)
+
+
+def sound():
+    if not quiet and os.path.exists(SOUND):
+        open("/tmp/cherrystone-chimed", "w").close()      # chime.stop then doesn't play it again
+        try:
+            subprocess.run(["timeout", "7", "aplay", "-q", SOUND], stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
+    else:
+        import time
+        time.sleep(1.5)
+    GLib.idle_add(go)
+GLib.timeout_add(250, lambda: threading.Thread(target=sound, daemon=True).start() and False)
+Gtk.main()
+EOF
+
 makefile root:root 0755 "$tmp"/etc/local.d/chime.stop <<'EOF'
 #!/bin/sh
 f=/usr/share/cherrystone/shutdown.wav
 [ -f "$f" ] || exit 0
+[ -f /tmp/cherrystone-chimed ] && exit 0          # the goodbye screen already played it
 [ -f /home/cherrystone/.config/cherrystone/no-sound ] && exit 0
 timeout 7 aplay -q "$f" 2>/dev/null
 exit 0

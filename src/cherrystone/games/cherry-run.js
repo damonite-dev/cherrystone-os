@@ -394,28 +394,31 @@ function over() {
 
 // ------------------------------------------------------------ draw
 function pad(n) { n = String(n); while (n.length < 5) n = "0" + n; return n; }
+// Ground things all move together: rounding each one on its own let them
+// slip a pixel out of step, which looked like the screen shaking
+function px(x) { return Math.round(x + dist) - Math.round(dist); }
 function draw() {
   g.fillStyle = BG; g.fillRect(0, 0, W, H);
   for (var ci = 0; ci < clouds.length; ci++) g.drawImage(sprite("cloud"), Math.round(clouds[ci].x), clouds[ci].y);
   g.fillStyle = PAL.k; g.fillRect(0, GROUND, W, 1);
   for (var pi = 0; pi < pits.length; pi++) {       // holes: a gap in the line, dark inside
-    var px = Math.round(pits[pi].x);
-    g.fillStyle = BG; g.fillRect(px, GROUND, pits[pi].w, H - GROUND);
-    g.fillStyle = PAL.k; g.fillRect(px, GROUND, 1, 6); g.fillRect(px + pits[pi].w - 1, GROUND, 1, 6);
+    var pitx = px(pits[pi].x);
+    g.fillStyle = BG; g.fillRect(pitx, GROUND, pits[pi].w, H - GROUND);
+    g.fillStyle = PAL.k; g.fillRect(pitx, GROUND, 1, 6); g.fillRect(pitx + pits[pi].w - 1, GROUND, 1, 6);
   }
   g.fillStyle = PAL.m;
-  for (var i = 0; i < bits.length; i++) g.fillRect(Math.round(bits[i].x), bits[i].y, bits[i].w, 1);
+  for (var i = 0; i < bits.length; i++) g.fillRect(px(bits[i].x), bits[i].y, bits[i].w, 1);
 
   for (var j = 0; j < things.length; j++) {
     var t = things[j], name = t.spr === "wasp" ? (Math.floor(t.t * 10) % 2 ? "wasp1" : "wasp2") : t.spr;
-    g.drawImage(sprite(name), Math.round(t.x), t.y);
+    g.drawImage(sprite(name), px(t.x), t.y);
   }
 
   var down = ducking && !P.air, pic;
   if (state === "over") pic = "ouch";
   else if (down) pic = "duck";
   else if (P.air) pic = "jump";
-  else if (state === "run") pic = Math.floor(dist / 14) % 2 ? "run1" : "run2";
+  else if (state === "run") pic = Math.floor(performance.now() / 130) % 2 ? "run1" : "run2";   // a steady bounce, not faster as it speeds up
   else pic = "run1";
   var sp = sprite(pic);
   var bob = pic === "run2" ? 1 : 0;   // the bounce

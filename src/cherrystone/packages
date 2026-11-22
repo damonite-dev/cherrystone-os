@@ -20,7 +20,7 @@ xf86-video-vesa xf86-video-fbdev xf86-video-intel
 xf86-video-ati xf86-video-nouveau mesa-dri-gallium
 
 # Desktop
-openbox tint2 rofi feh font-dejavu font-cantarell adwaita-icon-theme papirus-icon-theme xsetroot setxkbmap doas
+openbox tint2 rofi feh xset font-dejavu font-cantarell adwaita-icon-theme papirus-icon-theme xsetroot setxkbmap doas
 dunst libnotify          # notifications (volume/brightness popups)
 picom                    # window animations (fade and grow in, slide for shelf popups)
 tzdata                   # time zones
@@ -45,6 +45,7 @@ xclip          # copy screenshots
 gpicview       # image viewer
 mpv            # media player
 htop           # task manager (in the terminal)
+py3-gobject3 py3-cairo   # Cherrystone's own apps (Settings, Notes, Paint, ...) are Python + GTK
 
 # Network + sound
 networkmanager networkmanager-wifi networkmanager-cli network-manager-applet

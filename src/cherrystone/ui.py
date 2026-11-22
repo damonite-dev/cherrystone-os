@@ -503,8 +503,8 @@ def power():
     grid = Gtk.Grid(column_spacing=8, column_homogeneous=True)
     items = [] if GUEST else [("Lock", "system-lock-screen-symbolic", "cherrystone-lock")]
     items += [("Sign out", "system-log-out-symbolic", "openbox --exit"),
-              ("Restart", "system-reboot-symbolic", "doas /sbin/reboot"),
-              ("Shut down", "system-shutdown-symbolic", "doas /sbin/poweroff")]
+              ("Restart", "system-reboot-symbolic", "cherrystone-power restart"),
+              ("Shut down", "system-shutdown-symbolic", "cherrystone-power off")]
     for i, (t, ic, cmd) in enumerate(items):
         grid.attach(round_button(t, ic, cmd, win.destroy), i, 0, 1, 1)
     box.pack_start(grid, False, False, 0)
@@ -1282,7 +1282,7 @@ def install():
                          label("Shut down, take out the USB stick, and turn the computer back on. "
                                "Cherrystone will start from the disk.", "sub", wrap=True),
                          bar(button("Later", "plain", win.destroy),
-                             button("Shut down now", "main", lambda: run(["doas", "/sbin/poweroff"])))), "done")
+                             button("Shut down now", "main", lambda: run(["cherrystone-power", "off"])))), "done")
     err = label("", "sub", wrap=True)
     stack.add_named(page("sad", err,
                          label("Nothing on the USB stick was changed. You can try again.", "sub", wrap=True),
@@ -1451,7 +1451,7 @@ def save():
     add("done", "excited",
         label("Keep it plugged in. From the next restart your settings and files are kept.", "sub", wrap=True),
         bar(button("Later", "plain", win.destroy),
-            button("Restart now", "main", lambda: run(["doas", "/sbin/reboot"]))))
+            button("Restart now", "main", lambda: run(["cherrystone-power", "restart"]))))
     err = label("", "sub", wrap=True)
     add("error", "sad", err, bar(button("Close", "main", win.destroy)))
 
@@ -1581,7 +1581,10 @@ def recovery():
             name = dev.replace("/dev/", "")
             found = True
             if kind == "install":
-                item("system-run applications-system", "Repair Cherrystone on %s (%s)" % (name, size),
+                item("system-software-update software-update-available", "Update Cherrystone on %s (%s)" % (name, size),
+                     "Puts the Cherrystone from this USB stick on it. Your settings and files are kept.",
+                     "update", dev)
+                item("system-run applications-system", "Repair Cherrystone on %s" % name,
                      "Checks it, puts fresh system files on it and fixes how it starts. Your stuff is kept.",
                      "repair", dev)
                 item("folder", "Get your files from Cherrystone on %s" % name, None, "files", dev)
@@ -1603,8 +1606,8 @@ def recovery():
     lb.show()
     add("list", "thinking", intro, sc,
         bar(button("Terminal", "plain", lambda: run(["lxterminal", "-e", "su", "-l", "root"])),
-            button("Restart", "plain", lambda: run(["doas", "/sbin/reboot"])),
-            button("Shut down", "plain", lambda: run(["doas", "/sbin/poweroff"]))))
+            button("Restart", "plain", lambda: run(["cherrystone-power", "restart"])),
+            button("Shut down", "plain", lambda: run(["cherrystone-power", "off"]))))
 
     def home():
         state.update(dev=None, pw="")
@@ -1652,13 +1655,18 @@ def recovery():
               "(so it also updates it) and fixes how it starts. Your settings and files are kept.",
               "sub", wrap=True),
         bar(button("Back", "plain", home), button("Repair", "main", lambda: repair())))
+    # 3a'. update: the same work as Repair, said the way you think of it
+    add("update", "excited",
+        label("This puts the Cherrystone from this USB stick on the computer. Your settings, files "
+              "and Wi-Fi stay. It takes a few minutes; keep the computer plugged in.", "sub", wrap=True),
+        bar(button("Back", "plain", home), button("Update", "main", lambda: repair(True))))
     step = label("Getting ready...", "bold", wrap=True)
     prog = Gtk.ProgressBar()
     add("working", "happy", step, prog, label("Keep the computer plugged in.", "sub", wrap=True))
 
-    def repair():
+    def repair(updating=False):
         state["busy"] = True
-        show("working", "Repairing")
+        show("working", "Updating" if updating else "Repairing")
         proc = subprocess.Popen(R + ["repair", state["dev"]], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True)
         proc.stdin.write(state["pw"] + "\n")
@@ -1681,9 +1689,11 @@ def recovery():
             state["busy"] = False
             good, errs = r
             if good:
-                result("cool", "Repaired", "Take out the USB stick and restart to start Cherrystone from the disk.")
+                result("cool", "Updated" if updating else "Repaired",
+                       "Take out the USB stick and restart to start Cherrystone from the disk.")
             else:
-                result("sad", "The repair didn't finish", errs[0] if errs else "Something went wrong.")
+                result("sad", "The update didn't finish" if updating else "The repair didn't finish",
+                       errs[0] if errs else "Something went wrong.")
             return False
         in_thread(work, done)
 
@@ -1729,7 +1739,9 @@ def recovery():
     def picked(lb, row):
         state["dev"] = row.dev
         name = row.dev.replace("/dev/", "")
-        if row.action == "repair":
+        if row.action == "update":
+            with_password(lambda: show("update", "Update Cherrystone on %s?" % name))
+        elif row.action == "repair":
             with_password(lambda: show("repair", "Repair Cherrystone on %s?" % name))
         elif row.action == "files":
             with_password(files)

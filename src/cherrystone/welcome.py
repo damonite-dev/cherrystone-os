@@ -92,10 +92,44 @@ window.oobe { background: #ffffff; }
 .oobe .chosen .swatch { border-color: #d81e3c; }
 """
 
+# Dark: the same page in dark colours, swapped in the moment you pick Dark
+DARK_CSS = b"""
+window.oobe { background: #18181a; }
+.oobe .title { color: #ececef; }
+.oobe .sub, .oobe .field { color: #a0a0a6; }
+.oobe .dot { background: #3a3a40; }
+.oobe button.link { color: #a0a0a6; }
+.oobe button.link:hover { color: #ececef; }
+.oobe .swatch { border-color: #3a3a40; }
+.oobe .swatch.dark { border-color: #3a3a40; }
+.oobe entry, .oobe combobox button { background: #26262a; color: #ececef; border-color: #3a3a40; }
+.oobe headerbar, .oobe .titlebar { background: #18181a; color: #ececef; }
+"""
+
 provider = Gtk.CssProvider()
 provider.load_from_data(CSS)
 Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), provider,
                                          Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
+dark_provider = Gtk.CssProvider()
+dark_provider.load_from_data(DARK_CSS)
+dark_on = {"v": False}
+
+
+def set_dark(on):
+    """Switch this window between light and dark right away."""
+    if on == dark_on["v"]:
+        return
+    dark_on["v"] = on
+    screen = Gdk.Screen.get_default()
+    Gtk.Settings.get_default().set_property("gtk-application-prefer-dark-theme", on)
+    if on:
+        Gtk.StyleContext.add_provider_for_screen(screen, dark_provider, Gtk.STYLE_PROVIDER_PRIORITY_USER + 2)
+    else:
+        Gtk.StyleContext.remove_provider_for_screen(screen, dark_provider)
+
+
+if read(os.path.join(CONF, "theme")) == "dark":
+    set_dark(True)
 
 
 def lab(text, cls, wrap=False):
@@ -288,21 +322,23 @@ if not SETTINGS:
             choice["v"] = v
             for k, h in holders.items():
                 (h.get_style_context().add_class if k == v else h.get_style_context().remove_class)("chosen")
+            # everything changes now, not after Next: this window, and the
+            # rest of Cherrystone (menus, home page, the window borders)
+            set_dark(v == "dark")
+            if v != (read(os.path.join(CONF, "theme")) or "light"):
+                subprocess.Popen(["cherrystone-theme", v])
         b.connect("clicked", pick)
         looks.pack_start(b, False, False, 0)
     holders[choice["v"]].get_style_context().add_class("chosen")
     c.pack_start(looks, False, False, 0)
 
     def save_look():
-        if choice["v"] != (read(os.path.join(CONF, "theme")) or "light"):
-            subprocess.Popen(["cherrystone-theme", choice["v"]])
-        return True
+        return True                        # already done when you picked
     pages[-1] = (pages[-1][0], save_look, False)
 
     # Done
     c = page("done", "", "you're all set.",
              "Press the cherry (or the Windows key) to see your apps. The tour shows the rest.")
-    c.set_valign(Gtk.Align.CENTER)
     tour = Gtk.Button(label="Take the tour")
     tour.get_style_context().add_class("link")
     tour.set_halign(Gtk.Align.START)

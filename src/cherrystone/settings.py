@@ -329,8 +329,8 @@ def quick():
     for i, w in enumerate([
         round_button("Lock", "system-lock-screen-symbolic", "cherrystone-lock", False, shut),
         round_button("Sign out", "system-log-out-symbolic", "openbox --exit", False, shut),
-        round_button("Restart", "system-reboot-symbolic", "doas /sbin/reboot", False, shut),
-        round_button("Shut down", "system-shutdown-symbolic", "doas /sbin/poweroff", False, shut),
+        round_button("Restart", "system-reboot-symbolic", "cherrystone-power restart", False, shut),
+        round_button("Shut down", "system-shutdown-symbolic", "cherrystone-power off", False, shut),
     ]):
         if GUEST and i == 0:
             continue

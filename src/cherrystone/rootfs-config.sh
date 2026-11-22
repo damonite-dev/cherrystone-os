@@ -47,6 +47,14 @@ makefile root:root 0755 "$tmp"/usr/local/sbin/cherrystone-bye <<'EOF'
 pkill -x Xorg 2>/dev/null
 sleep 1
 chvt 1 2>/dev/null
+# the same black screen with the cherry as when it starts (the goodbye
+# screen before this already said "shutting down")
+if [ -e /dev/fb0 ] && [ -f /run/fbsplash.cfg ] && [ -f /usr/share/cherrystone/splash.ppm ]; then
+	printf '\033[2J\033[?25l' >/dev/tty1 2>/dev/null
+	grep -v '^BAR_' /run/fbsplash.cfg > /run/fbsplash-bye.cfg
+	fbsplash -c -s /usr/share/cherrystone/splash.ppm -i /run/fbsplash-bye.cfg >/dev/null 2>&1
+	exec /sbin/openrc shutdown >/dev/tty12 2>&1
+fi
 {
 	printf '\033]P1ffffff\033]P73a3a3a\033]PF3a3a3a\033]P2c0182f\033]PAc0182f'
 	printf '\033[?25l\033[0;1;37;41m\033[2J\033[H'
@@ -160,8 +168,8 @@ makefile root:root 0644 "$tmp"/etc/skel/.config/openbox/menu.xml <<'EOF'
   <separator />
   <item label="Lock"><action name="Execute"><command>cherrystone-lock</command></action></item>
   <item label="Sign out"><action name="Exit"><prompt>no</prompt></action></item>
-  <item label="Restart"><action name="Execute"><command>doas /sbin/reboot</command></action></item>
-  <item label="Shut down"><action name="Execute"><command>doas /sbin/poweroff</command></action></item>
+  <item label="Restart"><action name="Execute"><command>cherrystone-power restart</command></action></item>
+  <item label="Shut down"><action name="Execute"><command>cherrystone-power off</command></action></item>
 </menu>
 </openbox_menu>
 EOF
@@ -430,8 +438,9 @@ Web Browser|web-browser|cherrystone-browser
 Files|system-file-manager|pcmanfm
 Notes|accessories-text-editor|cherrystone-notes
 Calculator|accessories-calculator|cherrystone-calculator
-Photos|gpicview|gpicview
-Media Player|mpv|mpv --player-operation-mode=pseudo-gui
+Photos|gpicview|cherrystone-photos
+Media Player|mpv|cherrystone-media
+Paint|applications-graphics|cherrystone-paint
 Settings|preferences-system|cherrystone-settings
 EOF
 
@@ -870,7 +879,7 @@ time1_format = %H:%M
 time1_font = sans bold 10
 clock_font_color = #ffffff 100
 clock_padding = 8 0
-clock_tooltip = Quick settings
+clock_tooltip = %A, %B %-d, %Y
 clock_lclick_command = cherrystone-quick
 
 # Your picture: power, restart, sign out
@@ -1144,6 +1153,26 @@ EOF
 
 # First-run setup (OOBE): welcome.py, next to these scripts
 install -m 0755 "$BRAND"/../welcome.py "$tmp"/usr/local/bin/cherrystone-welcome
+# Photos and Media Player: pick a file when opened without one (pick.py,
+# installed under both names); Paint, a small drawing app
+install -m 0755 "$BRAND"/../pick.py "$tmp"/usr/local/bin/cherrystone-photos
+install -m 0755 "$BRAND"/../pick.py "$tmp"/usr/local/bin/cherrystone-media
+install -m 0755 "$BRAND"/../paint.py "$tmp"/usr/local/bin/cherrystone-paint
+# In the media player, O opens another file
+mkdir -p "$tmp"/etc/mpv
+cat >> "$tmp"/etc/mpv/input.conf <<'EOF'
+o run "cherrystone-media" "--add"
+O run "cherrystone-media" "--add"
+EOF
+makefile root:root 0644 "$tmp"/usr/share/applications/cherrystone-paint.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Paint
+Comment=Draw a picture
+Exec=cherrystone-paint
+Icon=applications-graphics
+Categories=Graphics;
+EOF
 
 makefile root:root 0755 "$tmp"/usr/local/bin/cherrystone-about <<'EOF'
 #!/bin/sh
@@ -1315,8 +1344,31 @@ start() {
 	left=$(( (w - iw) / 2 )); top=$(( (h - ih) / 2 ))
 	[ "$left" -ge 0 ] && [ "$top" -ge 0 ] || return 0
 	printf 'IMG_LEFT=%s\nIMG_TOP=%s\n' "$left" "$top" > /run/fbsplash.cfg
+	# a thin cherry bar under the logo that fills up while it starts (if
+	# there's room for it under the logo)
+	bw=$(( iw - 40 )); bl=$(( left + 20 )); bt=$(( top + ih + 28 ))
+	if [ $(( bt + 4 )) -lt "$h" ]; then
+		printf 'BAR_LEFT=%s\nBAR_TOP=%s\nBAR_WIDTH=%s\nBAR_HEIGHT=4\nBAR_R=216\nBAR_G=30\nBAR_B=60\n' \
+			"$bl" "$bt" "$bw" >> /run/fbsplash.cfg
+	fi
 	printf '\033[2J\033[?25l' > /dev/tty1
-	fbsplash -c -s "$img" -i /run/fbsplash.cfg >/dev/null 2>&1 || true
+	rm -f /run/fbsplash.fifo
+	mkfifo /run/fbsplash.fifo || { fbsplash -c -s "$img" -i /run/fbsplash.cfg >/dev/null 2>&1; return 0; }
+	fbsplash -c -s "$img" -i /run/fbsplash.cfg -f /run/fbsplash.fifo >/dev/null 2>&1 &
+	# Fill the bar over ~25 seconds, slowing down near the end; it's done
+	# (and gone) as soon as the desktop's screen is up
+	(
+		exec 3>/run/fbsplash.fifo
+		p=0
+		while [ ! -e /tmp/.X0-lock ] && [ "$p" -lt 600 ]; do
+			p=$((p + 1))
+			echo "write $(( 95 - 95 * 40 / (40 + p) ))" >&3
+			sleep 0.25
+		done
+		echo "write 100" >&3
+		sleep 0.2
+		echo "exit" >&3
+	) >/dev/null 2>&1 &
 	return 0
 }
 EOF
