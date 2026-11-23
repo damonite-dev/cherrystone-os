@@ -1027,6 +1027,9 @@ def about():
         ver = time.strftime("%-d %B %Y", time.strptime(ver, "%Y%m%d"))
     except ValueError:
         ver = ver or "unknown"
+    rel = read("/etc/cherrystone-release").strip().replace("-", " ")
+    if rel:
+        ver = "%s (built %s)" % (rel, ver)
     rows = [("Version", ver),
             ("This computer", "%s, %d MB memory (%s)" % (cpu, mem, "64-bit" if os.uname().machine == "x86_64" else "32-bit")),
             ("Browser", "Badwolf (WebKit), with ad blocking"),

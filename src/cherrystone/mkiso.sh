@@ -78,6 +78,8 @@ msg "Applying Cherrystone configuration"
 sh "$SRC/rootfs-config.sh" "$R" "$SRC/branding"
 # The version (the build date): Settings > About, and the update check
 date +%Y%m%d > "$R/etc/cherrystone-version"
+# the version name (like 0.4-beta), for Settings > About and the update check
+tr -d ' \r' < "$SRC/VERSION" | head -n1 > "$R/etc/cherrystone-release"
 cp "$R/etc/cherrystone-version" "$OUT/version.txt"
 chroot "$R" /bin/sh -e <<'EOF'
 adduser -D -s /bin/sh -g Cherrystone cherrystone

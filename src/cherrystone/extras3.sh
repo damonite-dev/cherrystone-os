@@ -539,34 +539,61 @@ EOF
 
 # ----------------------------------------------------------- update check
 # Settings > About > Check for updates, and once per start-up (quietly).
-# New versions are GitHub releases. This Cherrystone knows the day it was
-# built (/etc/cherrystone-version, YYYYMMDD); a release published more than
-# 3 days after that is newer (a release usually goes up a day or two after
-# its build, so that doesn't count as an update to itself).
+# New versions are GitHub releases, named like v0.4-beta. Each build knows
+# its version (/etc/cherrystone-release, from VERSION in the source), and a
+# release with a higher number is newer. (Builds from before 0.3 don't have
+# that file: for them, a release published more than 3 days after the build
+# date counts as newer.)
 makefile root:root 0755 "$tmp"/usr/local/bin/cherrystone-update <<'EOF'
 #!/bin/sh
 # cherrystone-update [--quiet]: is there a newer Cherrystone?
 REPO=damonite-dev/cherrystone-os
 PAGE="https://github.com/$REPO/releases"
-mine="$(cat /etc/cherrystone-version 2>/dev/null | tr -dc 0-9)"
+mine="$(head -n1 /etc/cherrystone-release 2>/dev/null)"
+built="$(cat /etc/cherrystone-version 2>/dev/null | tr -dc 0-9)"
 json="$(wget -q -T 15 -U cherrystone-update -O - "https://api.github.com/repos/$REPO/releases?per_page=1" 2>/dev/null)"
+tag="$(printf '%s' "$json" | grep -o '"tag_name": *"[^"]*' | head -n1 | sed 's/.*"//')"
 pub="$(printf '%s' "$json" | grep -o '"published_at": *"[0-9-]*' | head -n1 | grep -o '[0-9]\{4\}-[0-9][0-9]-[0-9][0-9]')"
 name="$(printf '%s' "$json" | grep -o '"name": *"[^"]*' | head -n1 | sed 's/.*"//')"
-if [ -z "$pub" ]; then
+if [ -z "$tag" ]; then
 	[ "$1" = --quiet ] || notify-send -i cherrystone "Updates" "Couldn't check. Are you online?"
 	exit 0
 fi
+
+# is version $1 newer than $2? (like 0.4-beta, 1.0, 1.0.2; a leading v is fine)
+newer_than() {
+	a="${1#v}"; b="${2#v}"
+	an="${a%%-*}"; bn="${b%%-*}"
+	set -f
+	old_ifs="$IFS"; IFS=.
+	set -- $an; a1="$(echo "${1:-0}" | tr -cd 0-9)"; a2="$(echo "${2:-0}" | tr -cd 0-9)"; a3="$(echo "${3:-0}" | tr -cd 0-9)"
+	set -- $bn; b1="$(echo "${1:-0}" | tr -cd 0-9)"; b2="$(echo "${2:-0}" | tr -cd 0-9)"; b3="$(echo "${3:-0}" | tr -cd 0-9)"
+	IFS="$old_ifs"; set +f
+	for p in 1 2 3; do
+		eval "x=\${a$p:-0}; y=\${b$p:-0}"
+		[ "$x" -gt "$y" ] && return 0
+		[ "$x" -lt "$y" ] && return 1
+	done
+	# the same numbers: a finished release beats a beta of it
+	[ "$a" = "$an" ] && [ "$b" != "$bn" ] && return 0
+	return 1
+}
+
 newer=no
 if [ -n "$mine" ]; then
-	a="$(date -d "$(echo "$mine" | sed 's/\(....\)\(..\)\(..\)/\1-\2-\3/')" +%s 2>/dev/null)"
+	newer_than "$tag" "$mine" && newer=yes
+elif [ -n "$built" ] && [ -n "$pub" ]; then
+	a="$(date -d "$(echo "$built" | sed 's/\(....\)\(..\)\(..\)/\1-\2-\3/')" +%s 2>/dev/null)"
 	b="$(date -d "$pub" +%s 2>/dev/null)"
 	[ -n "$a" ] && [ -n "$b" ] && [ $((b - a)) -gt $((3 * 86400)) ] && newer=yes
 fi
 if [ "$newer" = yes ]; then
-	( act="$(notify-send -i cherrystone -t 0 "${name:-A new Cherrystone} is out" 		"Write it to a USB stick and start from it. On an installed computer, choose Recovery > Repair: your settings and files stay." 		-A get="Download")"
+	( act="$(notify-send -i cherrystone -t 0 "${name:-A new Cherrystone} is out" \
+		"Write it to a USB stick and start from it. On an installed computer, choose Recovery > Update: your settings and files stay." \
+		-A get="Download")"
 	  [ "$act" = get ] && cherrystone-browser "$PAGE" ) &
 else
-	[ "$1" = --quiet ] || notify-send -i cherrystone "Updates" "You have the newest Cherrystone."
+	[ "$1" = --quiet ] || notify-send -i cherrystone "Updates" "You have the newest Cherrystone${mine:+ ($mine)}."
 fi
 EOF
 
