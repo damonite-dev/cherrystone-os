@@ -14,6 +14,12 @@ from gi.repository import Gdk, GLib, Gtk
 
 GLib.set_prgname("CherryWelcome")   # window class Cherry*: the window manager focuses it
 SETTINGS = "--settings" in sys.argv[1:]
+# From the USB stick (not installed): no name or password yet (those come
+# with Install), and the answers are kept on the stick for next time
+try:
+    LIVE = "cherrystone.live" in open("/proc/cmdline").read().split()
+except OSError:
+    LIVE = False
 HOME = os.path.expanduser("~")
 CONF = os.path.join(HOME, ".config/cherrystone")
 LAYOUTS = ("us gb de fr es it pt br latam ca nl be ch at se no dk fi is ie pl cz sk hu ro bg "
@@ -70,6 +76,15 @@ def online():
     return r.stdout.strip() == "connected"
 
 
+try:                                       # Personalize > Accent colour
+    import sys as _sys
+    _sys.path.insert(0, "/usr/lib/cherrystone")
+    from accent import accent as _accent
+except Exception:
+    def _accent(css):
+        return css
+
+
 CSS = b"""
 window.oobe { background: #ffffff; }
 .oobe .band { background: #d81e3c; }
@@ -107,11 +122,11 @@ window.oobe { background: #18181a; }
 """
 
 provider = Gtk.CssProvider()
-provider.load_from_data(CSS)
+provider.load_from_data(_accent(CSS))
 Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), provider,
                                          Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
 dark_provider = Gtk.CssProvider()
-dark_provider.load_from_data(DARK_CSS)
+dark_provider.load_from_data(_accent(DARK_CSS))
 dark_on = {"v": False}
 
 
@@ -181,12 +196,15 @@ bottom.pack_end(backb, False, False, 0)
 root.pack_end(bottom, False, False, 0)
 
 pages = []   # (name, on_next -> True to go on, can_skip)
+steps = []   # the "2 of 4" labels, filled in once every page is made
 
 
 def page(name, step, title, sub, on_next=None, can_skip=False):
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
     if step:
-        box.pack_start(lab(step, "step"), False, False, 0)
+        sl = lab("", "step")
+        steps.append(sl)
+        box.pack_start(sl, False, False, 0)
     box.pack_start(lab(title, "title"), False, False, 0)
     if sub:
         box.pack_start(lab(sub, "sub", wrap=True), False, False, 0)
@@ -224,7 +242,7 @@ if not SETTINGS:
                  False, False, 0)
 
     # Internet
-    c = page("net", "1 of 5", "get online.",
+    c = page("net", "#", "get online.",
              "Pick a Wi-Fi network, or plug in a cable. Most of Cherrystone runs on the web.",
              can_skip=True)
     net_label = lab("", "sub")
@@ -244,7 +262,7 @@ if not SETTINGS:
     GLib.timeout_add_seconds(3, refresh)
 
 # Keyboard and time zone
-c = page("region", "" if SETTINGS else "2 of 5", "keyboard and time.",
+c = page("region", "" if SETTINGS else "#", "keyboard and time.",
          "So the keys type what they say, and the clock shows your time.", save_region)
 grid = Gtk.Grid(column_spacing=16, row_spacing=10)
 for r, (t, w) in enumerate((("Keyboard layout", kb_box), ("Time zone", tz_box))):
@@ -253,7 +271,7 @@ for r, (t, w) in enumerate((("Keyboard layout", kb_box), ("Time zone", tz_box)))
     grid.attach(w, 1, r, 1, 1)
 c.pack_start(grid, False, False, 0)
 
-if not SETTINGS:
+if not SETTINGS and not LIVE:
     # Name
     name = Gtk.Entry()
     name.set_max_length(40)
@@ -268,7 +286,7 @@ if not SETTINGS:
             write(os.path.join(CONF, "name"), n + "\n")
             subprocess.Popen(["cherrystone-shelf"], stderr=subprocess.DEVNULL)
         return True
-    c = page("name", "3 of 5", "what's your name?",
+    c = page("name", "#", "what's your name?",
              "It's shown when you sign in and on the lock screen.", save_name, can_skip=True)
     c.pack_start(name, False, False, 0)
     name.connect("activate", lambda *_: go(1))
@@ -290,7 +308,7 @@ if not SETTINGS:
             pw_err.set_text("Couldn't set the password. You can try again in Settings.")
             return False
         return True
-    c = page("pass", "4 of 5", "add a password.",
+    c = page("pass", "#", "add a password.",
              "Keeps other people out when you sign in or the screen locks. Leave it empty "
              "if nobody else uses this computer.", save_pass, can_skip=True)
     for e, hint in ((pw1, "Password"), (pw2, "Type it again")):
@@ -301,8 +319,9 @@ if not SETTINGS:
     pw1.connect("activate", lambda *_: pw2.grab_focus())
     pw2.connect("activate", lambda *_: go(1))
 
-    # Light or dark
-    c = page("look", "5 of 5", "light or dark?", "You can switch any time in Personalize.")
+if not SETTINGS:
+    # Light or dark, and the accent colour
+    c = page("look", "#", "light or dark?", "You can switch any time in Personalize.")
     looks = Gtk.Box(spacing=16)
     choice = {"v": "dark" if read(os.path.join(CONF, "theme")) == "dark" else "light"}
     holders = {}
@@ -332,13 +351,44 @@ if not SETTINGS:
     holders[choice["v"]].get_style_context().add_class("chosen")
     c.pack_start(looks, False, False, 0)
 
+    # accent colour chips; this window and everything else change right away
+    c.pack_start(lab("Accent colour", "field"), False, False, 8)
+    chips_box = Gtk.Box(spacing=8)
+    acc = {"v": read(os.path.join(CONF, "accent"), "cherry") or "cherry"}
+    chips = {}
+    for an, ah in (("cherry", "#d81e3c"), ("blue", "#2b6fd6"), ("green", "#2e9b4f"), ("orange", "#e0701c"),
+                   ("purple", "#6b4bc9"), ("teal", "#0f8f8a"), ("pink", "#c43e8a")):
+        cb = Gtk.Button()
+        cb.set_tooltip_text(an.capitalize())
+        cpv = Gtk.CssProvider()
+        cpv.load_from_data(("button { background: %s; background-image: none; border-radius: 0; box-shadow: none;"
+                            " border: 3px solid transparent; min-width: 30px; min-height: 30px; }"
+                            " button.picked { border-color: #202124; }" % ah).encode())
+        cb.get_style_context().add_provider(cpv, Gtk.STYLE_PROVIDER_PRIORITY_USER + 3)
+        chips[an] = cb
+
+        def pick_accent(_b, an=an):
+            acc["v"] = an
+            for k, ch in chips.items():
+                (ch.get_style_context().add_class if k == an else ch.get_style_context().remove_class)("picked")
+            subprocess.run(["cherrystone-theme", "accent", an])
+            provider.load_from_data(_accent(CSS))           # this window too
+            dark_provider.load_from_data(_accent(DARK_CSS))
+        cb.connect("clicked", pick_accent)
+        chips_box.pack_start(cb, False, False, 0)
+    chips.get(acc["v"], chips["cherry"]).get_style_context().add_class("picked")
+    c.pack_start(chips_box, False, False, 0)
+
     def save_look():
         return True                        # already done when you picked
     pages[-1] = (pages[-1][0], save_look, False)
 
     # Done
     c = page("done", "", "you're all set.",
-             "Press the cherry (or the Windows key) to see your apps. The tour shows the rest.")
+             "Press the cherry (or the Windows key) to see your apps. The tour shows the rest."
+             + ("\n\nRunning from the USB stick: your name and a password come when you install "
+                "Cherrystone. These settings are kept on the stick, so next time you start "
+                "straight away." if LIVE else ""))
     tour = Gtk.Button(label="Take the tour")
     tour.get_style_context().add_class("link")
     tour.set_halign(Gtk.Align.START)
@@ -347,6 +397,8 @@ if not SETTINGS:
 
 # ------------------------------------------------------------- moving along
 
+for k, sl in enumerate(steps):
+    sl.set_text("%d of %d" % (k + 1, len(steps)))
 for _ in pages:
     d = Gtk.Box()
     d.get_style_context().add_class("dot")
@@ -372,9 +424,25 @@ def show(i):
         pw1.grab_focus()
 
 
+def remember_on_stick():
+    """From the USB stick: keep these answers on it, so setup doesn't come back."""
+    vals = {"keyboard": read(os.path.join(CONF, "keyboard")) or current_layout(),
+            "timezone": read("/etc/timezone", "UTC"),
+            "theme": read(os.path.join(CONF, "theme"), "light"),
+            "accent": read(os.path.join(CONF, "accent"), "cherry")}
+    data = "".join("%s=%s\n" % kv for kv in vals.items())
+    try:
+        subprocess.run(["doas", "/usr/local/sbin/cherrystone-livesetup", "save"], input=data.encode(),
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def finish():
     os.makedirs(CONF, exist_ok=True)
     open(os.path.join(CONF, "welcomed"), "a").close()
+    if LIVE and not SETTINGS:
+        remember_on_stick()
     Gtk.main_quit()
 
 

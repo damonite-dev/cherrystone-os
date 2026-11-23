@@ -124,9 +124,19 @@ if [ ! -x "$BWC/badwolf" ]; then
 	cp -r "$R/etc/apk/keys" "$R/etc/apk/repositories" "$BR/etc/apk/"
 	apk add --root "$BR" --arch "$ARCH" --initdb --no-cache --no-progress \
 		alpine-base build-base webkit2gtk-4.1-dev samurai ed >/dev/null
-	wget -q -O "$BR/src/badwolf.tar.gz" "https://hacktivis.me/releases/badwolf-$BW_VER.tar.gz"
-	echo "$BW_SHA512  $BR/src/badwolf.tar.gz" | sha512sum -c - >/dev/null ||
-		die "the Badwolf source download doesn't match its checksum"
+	# The source is kept in /var/tmp after the first download, so a build
+	# still works when the Badwolf site is down
+	BWT="/var/tmp/badwolf-$BW_VER.tar.gz"
+	if ! { [ -f "$BWT" ] && echo "$BW_SHA512  $BWT" | sha512sum -c - >/dev/null 2>&1; }; then
+		for try in 1 2 3; do
+			wget -q -O "$BWT.part" "https://hacktivis.me/releases/badwolf-$BW_VER.tar.gz" && break
+			sleep 5
+		done
+		echo "$BW_SHA512  $BWT.part" | sha512sum -c - >/dev/null 2>&1 ||
+			die "couldn't download the Badwolf source (or it doesn't match its checksum)"
+		mv "$BWT.part" "$BWT"
+	fi
+	cp "$BWT" "$BR/src/badwolf.tar.gz"
 	tar -xzf "$BR/src/badwolf.tar.gz" -C "$BR/src"
 	sed -i 's/"enable-javascript-markup", FALSE/"enable-javascript-markup", TRUE/' \
 		"$BR/src/badwolf-$BW_VER/config.h"

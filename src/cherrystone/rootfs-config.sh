@@ -148,6 +148,7 @@ permit nopass cherrystone as root cmd /sbin/poweroff
 permit nopass cherrystone as root cmd /sbin/reboot
 permit nopass cherrystone as root cmd /usr/bin/brightnessctl
 permit nopass cherrystone as root cmd /usr/local/sbin/cherrystone-settz
+permit nopass cherrystone as root cmd /usr/local/sbin/cherrystone-livesetup
 permit nopass cherrystone as root cmd /usr/local/sbin/cherrystone-checkpass
 permit nopass cherrystone as root cmd /usr/local/sbin/cherrystone-guest
 permit nopass guest as root cmd /sbin/poweroff
@@ -442,6 +443,7 @@ Photos|gpicview|cherrystone-photos
 Media Player|mpv|cherrystone-media
 Paint|applications-graphics|cherrystone-paint
 Settings|preferences-system|cherrystone-settings
+Add apps|system-software-install|cherrystone-gallery
 EOF
 
 # Linux tools, shown only after Settings > Advanced > Advanced tools (like the
@@ -520,6 +522,8 @@ pkill -x rofi && exit 0
 apps="/tmp/cherrystone-apps.$(id -u)"
 cat /usr/share/cherrystone/apps > "$apps"
 [ -f ~/.config/cherrystone/linux-apps ] && cat /usr/share/cherrystone/apps-linux >> "$apps"
+# web apps added in Add apps
+[ -f ~/.config/cherrystone/apps-user ] && cat ~/.config/cherrystone/apps-user >> "$apps"
 # "Good evening, Sam" at the top
 h="$(date +%H)"
 case "$h" in 0[5-9]|1[01]) hi="Good morning" ;; 1[2-7]) hi="Good afternoon" ;; *) hi="Good evening" ;; esac
@@ -529,10 +533,14 @@ greeting="$hi${name:+, $name}"
 dark=""
 [ "$(cat ~/.config/cherrystone/theme 2>/dev/null)" = dark ] &&
 	dark="* { bg: #18181a; field: #26262a; fg: #ececef; dim: #a0a0a6; hover: #4a1a26; }"
+# the accent colour (Personalize): a recoloured copy of the theme
+rasi=/usr/share/cherrystone/launcher.rasi
+[ -s ~/.config/cherrystone/launcher.rasi ] && rasi=~/.config/cherrystone/launcher.rasi
+[ -n "$dark" ] && [ -s ~/.config/cherrystone/accent.sed ] && dark="$(echo "$dark" | sed -f ~/.config/cherrystone/accent.sed)"
 choice="$(while IFS='|' read -r name icon cmd; do
 		printf '%s\0icon\037%s\n' "$name" "$icon"
 	done < "$apps" |
-	rofi -dmenu -i -p "" -mesg "$greeting" -theme /usr/share/cherrystone/launcher.rasi ${dark:+-theme-str "$dark"})"
+	rofi -dmenu -i -p "" -mesg "$greeting" -theme "$rasi" ${dark:+-theme-str "$dark"})"
 [ -n "$choice" ] || exit 0
 cmd="$(awk -F'|' -v n="$choice" '$1 == n { print $3; exit }' "$apps")"
 [ -n "$cmd" ] && exec sh -c "$cmd"
@@ -671,6 +679,21 @@ cherrystone-home
 # and in the launcher. The welcome screen only shows until it has been
 # answered once (which is every boot unless your stuff is being saved).
 # The tour is linked from the home page (no pop-up).
+# From the USB stick: setup's answers from last time (kept on the stick by
+# cherrystone-livesetup), so setup doesn't come back every start
+if grep -qw cherrystone.live /proc/cmdline && [ "$USER" != guest ] && [ ! -f ~/.config/cherrystone/welcomed ]; then
+	kept="$(doas /usr/local/sbin/cherrystone-livesetup load 2>/dev/null)"
+	if [ -n "$kept" ]; then
+		kv() { echo "$kept" | sed -n "s/^$1=//p" | head -n1 | tr -cd 'A-Za-z0-9_/+-'; }
+		mkdir -p ~/.config/cherrystone
+		kb="$(kv keyboard)"; tz="$(kv timezone)"; th="$(kv theme)"; ac="$(kv accent)"
+		[ -n "$kb" ] && { echo "$kb" > ~/.config/cherrystone/keyboard; setxkbmap -layout "$kb" 2>/dev/null; }
+		[ -n "$tz" ] && doas /usr/local/sbin/cherrystone-settz "$tz" >/dev/null 2>&1
+		[ -n "$ac" ] && echo "$ac" > ~/.config/cherrystone/accent
+		cherrystone-theme "${th:-light}" >/dev/null 2>&1
+		touch ~/.config/cherrystone/welcomed
+	fi
+fi
 (if [ "$USER" != guest ] && [ ! -f ~/.config/cherrystone/welcomed ]; then cherrystone-welcome; fi) &
 # The rest can wait: on a single-core netbook the desktop gets the
 # processor to itself while it starts
@@ -906,6 +929,7 @@ else
 	edit='/^#INSTALL{$/,/^#}INSTALL$/d'
 fi
 sed -e "s#@AVATAR@#$face#" -e "$edit" /usr/share/cherrystone/shelf.tint2rc > "$d/shelf.tint2rc"
+[ -s ~/.config/cherrystone/accent.sed ] && sed -i -f ~/.config/cherrystone/accent.sed "$d/shelf.tint2rc"
 pkill -x tint2
 exec tint2 -c "$d/shelf.tint2rc"
 EOF
@@ -932,9 +956,10 @@ notebook > header tab:checked { background: #ffffff; color: #202124; box-shadow:
 notebook > header tab button { padding: 0; min-width: 18px; min-height: 18px; border-radius: 0;
                                background: transparent; border: none; box-shadow: none; }
 notebook > header tab button:hover { background: #dadce0; }
-#cherry_tabplus { margin-left: 10px; padding: 2px; min-width: 22px; min-height: 22px; border-radius: 0;
-                  color: #5f6368; background: transparent; border: none; box-shadow: none; }
-#cherry_tabplus:hover { background: #dadce0; }
+/* the "+" for a new tab, at the end of the tabs */
+notebook > header > button { margin: 2px 6px; padding: 4px; min-width: 24px; min-height: 24px; border-radius: 0;
+                             color: #5f6368; background: transparent; border: none; box-shadow: none; }
+notebook > header > button:hover { background: #dadce0; color: #202124; }
 notebook > stack { border: none; }
 box > box > button { border-radius: 0; border: none; background: transparent; box-shadow: none; }
 box > box > button:hover { background: #f1f3f4; }
@@ -996,18 +1021,102 @@ sed -f "$T/dark.sed" "$tmp"/usr/share/themes/Cherrystone/openbox-3/themerc \
 	> "$tmp"/usr/share/themes/Cherrystone-Dark/openbox-3/themerc
 chmod 0644 "$T"/light/* "$T"/dark/* "$tmp"/usr/share/themes/Cherrystone-Dark/openbox-3/themerc
 
+# cherrystone-livesetup save|load: setup's answers (keyboard, time zone,
+# light or dark, accent) in a small file on the USB stick Cherrystone runs
+# from, so setup doesn't come back at every start. A stick made with Rufus is
+# FAT and takes it directly; one made with balenaEtcher has a small FAT
+# partition (for UEFI) where it fits. A CD, or no room: nothing is kept.
+makefile root:root 0755 "$tmp"/usr/local/sbin/cherrystone-livesetup <<'EOF'
+#!/bin/sh
+F=cherrystone-setup.txt
+M=/run/cherrystone-stick
+grep -qw cherrystone.live /proc/cmdline || exit 1
+boot="$(awk '$2 == "/media/.boot" { print $1; exit }' /proc/mounts)"
+fs="$(awk '$2 == "/media/.boot" { print $3; exit }' /proc/mounts)"
+[ -n "$boot" ] || exit 1
+spot=""; mine=""
+if [ "$fs" = vfat ]; then
+	spot=/media/.boot
+else
+	case "$boot" in
+		/dev/nvme*|/dev/mmcblk*) disk="${boot%p[0-9]*}" ;;
+		*) disk="$(echo "$boot" | sed 's/[0-9]*$//')" ;;
+	esac
+	for p in $(lsblk -lpno NAME,FSTYPE "$disk" 2>/dev/null | awk '$2 == "vfat" { print $1 }'); do
+		mkdir -p "$M"
+		if mount -t vfat "$p" "$M" 2>/dev/null; then spot="$M"; mine=1; break; fi
+	done
+fi
+[ -n "$spot" ] || exit 1
+done_() { [ -n "$mine" ] && umount "$M" 2>/dev/null; exit "$1"; }
+case "$1" in
+load)
+	[ -f "$spot/$F" ] && head -c 2048 "$spot/$F"
+	done_ 0 ;;
+save)
+	# only simple key=value lines
+	data="$(head -c 2048 | grep -E '^[a-z]+=[A-Za-z0-9_/+-]*$')"
+	[ -n "$data" ] || done_ 1
+	ro=""
+	if [ -z "$mine" ] && ! touch "$spot/.cs-w" 2>/dev/null; then
+		mount -o remount,rw "$spot" 2>/dev/null || done_ 1
+		ro=1
+	fi
+	rm -f "$spot/.cs-w"
+	printf '%s\n' "$data" > "$spot/$F.new" && mv "$spot/$F.new" "$spot/$F"
+	sync
+	[ -n "$ro" ] && mount -o remount,ro "$spot" 2>/dev/null
+	done_ 0 ;;
+esac
+done_ 1
+EOF
+
 makefile root:root 0755 "$tmp"/usr/local/bin/cherrystone-theme <<'EOF'
 #!/bin/sh
 # cherrystone-theme light|dark   (no argument: put the saved one back in place)
-t="${1:-$(cat ~/.config/cherrystone/theme 2>/dev/null)}"
+# cherrystone-theme accent NAME  (cherry blue green orange purple teal pink)
+C=~/.config/cherrystone
+mkdir -p $C ~/.config/gtk-3.0 ~/.local/share/badwolf
+if [ "$1" = accent ]; then
+	echo "${2:-cherry}" > $C/accent
+	set --
+fi
+t="${1:-$(cat $C/theme 2>/dev/null)}"
 [ "$t" = dark ] || t=light
 D=/usr/share/cherrystone/theme/$t
-mkdir -p ~/.config/cherrystone ~/.config/gtk-3.0 ~/.local/share/badwolf
-echo "$t" > ~/.config/cherrystone/theme
-cp "$D/gtk.css" ~/.config/gtk-3.0/gtk.css
-cp "$D/interface.css" ~/.local/share/badwolf/interface.css
+echo "$t" > $C/theme
+
+# The accent colour: which cherry reds become which colour. Apps read
+# accent-map; the files below go through accent.sed.
+accent="$(cat $C/accent 2>/dev/null)"
+case "$accent" in
+	blue)   map="d81e3c:2b6fd6 b3122f:245cb2 b8172f:255eb6 a81530:2257a7 8e0f26:1c488b fde4e8:e3ecfa fbe3e8:e3ecfa f9c9d2:cadbf5 ffd2d9:d5e2f7 fdf1f4:f2f6fd f8eef0:f0f5fc 4a1a26:1d304f 5c1f2e:1f3961" ;;
+	green)  map="d81e3c:2e9b4f b3122f:268142 b8172f:278443 a81530:24793e 8e0f26:1e6533 fde4e8:e4f2e8 fbe3e8:e4f2e8 f9c9d2:cbe6d3 ffd2d9:d5ebdc fdf1f4:f2f9f4 f8eef0:f0f8f3 4a1a26:1e3d29 5c1f2e:204a2e" ;;
+	orange) map="d81e3c:e0701c b3122f:ba5d17 b8172f:be5f18 a81530:af5716 8e0f26:924912 fde4e8:fbece1 fbe3e8:fbece1 f9c9d2:f7dbc6 ffd2d9:f9e2d2 fdf1f4:fdf6f1 f8eef0:fdf5ef 4a1a26:50311b 5c1f2e:64391b" ;;
+	purple) map="d81e3c:6b4bc9 b3122f:593ea7 b8172f:5b40ab a81530:533a9d 8e0f26:463183 fde4e8:ece8f8 fbe3e8:ece8f8 f9c9d2:dad2f2 ffd2d9:e1dbf4 fdf1f4:f6f4fc f8eef0:f5f2fb 4a1a26:2f264b 5c1f2e:382b5c" ;;
+	teal)   map="d81e3c:0f8f8a b3122f:0c7773 b8172f:0d7a75 a81530:0c706c 8e0f26:0a5d5a fde4e8:e0f0f0 fbe3e8:e0f0f0 f9c9d2:c3e3e2 ffd2d9:cfe9e8 fdf1f4:f1f8f8 f8eef0:eef7f7 4a1a26:153939 5c1f2e:154545" ;;
+	pink)   map="d81e3c:c43e8a b3122f:a33373 b8172f:a73575 a81530:99306c 8e0f26:7f285a fde4e8:f7e6f0 fbe3e8:f7e6f0 f9c9d2:f0cfe2 ffd2d9:f3d8e8 fdf1f4:fbf3f8 f8eef0:fbf1f7 4a1a26:482339 5c1f2e:592645" ;;
+	*)      accent=cherry; map="" ;;
+esac
+echo "$map" > $C/accent-map
+: > $C/accent.sed
+for p in $map; do echo "s/#${p%%:*}/#${p#*:}/gI" >> $C/accent.sed; done
+
+sed -f $C/accent.sed "$D/gtk.css" > ~/.config/gtk-3.0/gtk.css
+sed -f $C/accent.sed "$D/interface.css" > ~/.local/share/badwolf/interface.css
 dark=0; ob=Cherrystone
 [ "$t" = dark ] && { dark=1; ob=Cherrystone-Dark; }
+# window borders: a recoloured copy of the theme in ~/.themes (or none)
+rm -rf ~/.themes/Cherrystone ~/.themes/Cherrystone-Dark
+if [ -n "$map" ]; then
+	for n in Cherrystone Cherrystone-Dark; do
+		mkdir -p ~/.themes/$n/openbox-3
+		cp -r /usr/share/themes/$n/openbox-3/. ~/.themes/$n/openbox-3/
+		sed -i -f $C/accent.sed ~/.themes/$n/openbox-3/themerc
+	done
+fi
+# the launcher
+sed -f $C/accent.sed /usr/share/cherrystone/launcher.rasi > $C/launcher.rasi
 [ -f ~/.config/gtk-3.0/settings.ini ] &&
 	sed -i "s/^gtk-application-prefer-dark-theme=.*/gtk-application-prefer-dark-theme=$dark/" ~/.config/gtk-3.0/settings.ini
 [ -f ~/.config/openbox/rc.xml ] &&
@@ -1015,6 +1124,7 @@ dark=0; ob=Cherrystone
 if [ -n "$DISPLAY" ]; then
 	openbox --reconfigure 2>/dev/null
 	cherrystone-home 2>/dev/null
+	[ "$USER" = guest ] || (cherrystone-shelf >/dev/null 2>&1 &)   # the shelf picks up the colour
 fi
 exit 0
 EOF
@@ -1153,6 +1263,9 @@ EOF
 
 # First-run setup (OOBE): welcome.py, next to these scripts
 install -m 0755 "$BRAND"/../welcome.py "$tmp"/usr/local/bin/cherrystone-welcome
+# accent.py: Cherrystone's apps recolour themselves with it (Personalize > Accent colour)
+mkdir -p "$tmp"/usr/lib/cherrystone
+install -m 0644 "$BRAND"/../accent.py "$tmp"/usr/lib/cherrystone/accent.py
 # Photos and Media Player: pick a file when opened without one (pick.py,
 # installed under both names); Paint, a small drawing app
 install -m 0755 "$BRAND"/../pick.py "$tmp"/usr/local/bin/cherrystone-photos
@@ -1172,6 +1285,12 @@ Comment=Draw a picture
 Exec=cherrystone-paint
 Icon=applications-graphics
 Categories=Graphics;
+EOF
+
+makefile root:root 0755 "$tmp"/usr/local/bin/cherrystone-gallery <<'EOF'
+#!/bin/sh
+# Add apps: popular web apps as home page tiles (part of cherrystone-ui)
+exec cherrystone-ui gallery
 EOF
 
 makefile root:root 0755 "$tmp"/usr/local/bin/cherrystone-about <<'EOF'

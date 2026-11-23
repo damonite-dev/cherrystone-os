@@ -711,6 +711,35 @@ def wallpaper():
     dk.connect("notify::active", lambda s, *_: run(["cherrystone-theme", "dark" if s.get_active() else "light"]))
     row.pack_end(dk, False, False, 0)
     box.pack_start(row, False, False, 0)
+    # Accent colour: the colour of buttons, switches, highlights and the
+    # home page band (cherry unless you pick another)
+    box.pack_start(label("Accent colour", "bold"), False, False, 0)
+    accents = Gtk.Box(spacing=8)
+    cur_acc = {"v": read(CONF + "/accent", "cherry").strip() or "cherry"}
+    chips = {}
+    for name, hexc in ACCENTS:
+        b = Gtk.Button()
+        b.set_tooltip_text(name.capitalize())
+        b.set_size_request(34, 34)
+        b.get_style_context().add_class("accent-chip")
+        cp = Gtk.CssProvider()
+        cp.load_from_data(("button { background: %s; background-image: none; border-radius: 0; "
+                           "border: 3px solid transparent; box-shadow: none; min-width: 28px; min-height: 28px; }"
+                           "button.picked { border-color: #202124; }" % hexc).encode())
+        b.get_style_context().add_provider(cp, Gtk.STYLE_PROVIDER_PRIORITY_USER + 3)
+        chips[name] = b
+
+        def pick_acc(_b, name=name):
+            cur_acc["v"] = name
+            for n, c in chips.items():
+                (c.get_style_context().add_class if n == name else c.get_style_context().remove_class)("picked")
+            run(["cherrystone-theme", "accent", name])
+        b.connect("clicked", pick_acc)
+        accents.pack_start(b, False, False, 0)
+    chips.get(cur_acc["v"], chips["cherry"]).get_style_context().add_class("picked")
+    box.pack_start(accents, False, False, 0)
+    box.pack_start(label("Open apps change when you open them again.", "small", wrap=True), False, False, 0)
+
     box.pack_start(label("Wallpaper", "bold"), False, False, 0)
     box.pack_start(label("Shows behind the sign-in screen, the lock screen and the home page.", "sub", wrap=True),
                    False, False, 0)
@@ -1762,13 +1791,138 @@ def recovery():
 
 # ---------------------------------------------------------------------- main
 
+
+# ------------------------------------------------------------------- gallery
+# Add apps: popular web apps, one click to get a tile on the home page and
+# an entry in the launcher. (Name, what it is, address, tile colour, letter,
+# Papirus icon name.)
+GALLERY = [
+    ("Spotify", "Music and podcasts", "https://open.spotify.com", "#1db954", "S", "spotify"),
+    ("Discord", "Chat with friends", "https://discord.com/app", "#5865f2", "D", "discord"),
+    ("WhatsApp", "Messages from your phone", "https://web.whatsapp.com", "#25d366", "W", "whatsapp"),
+    ("Netflix", "Films and shows", "https://www.netflix.com", "#b20710", "N", "netflix"),
+    ("Outlook", "Microsoft email", "https://outlook.live.com", "#0a64d8", "O", "ms-outlook"),
+    ("Office", "Word, Excel and PowerPoint", "https://www.office.com", "#d83b01", "O", "ms-office"),
+    ("Canva", "Make posters and slides", "https://www.canva.com", "#00a3c4", "C", "canva"),
+    ("Photopea", "Edit photos", "https://www.photopea.com", "#18a497", "P", "photopea"),
+    ("Scratch", "Make games and stories", "https://scratch.mit.edu", "#f7a531", "S", "scratch"),
+    ("Khan Academy", "Free lessons", "https://www.khanacademy.org", "#14bf96", "K", "khanacademy"),
+    ("Duolingo", "Learn a language", "https://www.duolingo.com", "#58cc02", "D", "duolingo"),
+    ("Classroom", "Google Classroom", "https://classroom.google.com", "#1e8e3e", "C", "google-classroom"),
+    ("Telegram", "Messages", "https://web.telegram.org", "#2aabee", "T", "telegram"),
+    ("Twitch", "Live streams", "https://www.twitch.tv", "#9146ff", "T", "twitch"),
+    ("Reddit", "Communities", "https://www.reddit.com", "#ff4500", "R", "reddit"),
+    ("Pinterest", "Ideas and pictures", "https://www.pinterest.com", "#e60023", "P", "pinterest"),
+]
+USER_APPS = os.path.join(CONF, "apps-user")       # the launcher's extra entries
+
+
+def gallery():
+    single("gallery")
+    mode = out("cherrystone-mode") or "full"
+    tiles_path = os.path.join(CONF, "tiles-" + mode)
+    if not os.path.isfile(tiles_path):
+        out("cherrystone-home")                    # makes your copy of the tiles
+    win, box = window("Add apps", "system-software-install", 560)
+    box.pack_start(label("Web apps you can add with one click. Each gets a tile on the home page and a "
+                         "place in the launcher.", "sub", wrap=True), False, False, 0)
+
+    def added(url):
+        return any(l.split("|")[3:4] == [url] for l in read(tiles_path).splitlines())
+
+    def toggle(app, btn):
+        name, _, url, colour, letter, ic = app
+        tiles_ = [l for l in read(tiles_path).splitlines() if l.strip()]
+        apps = [l for l in read(USER_APPS).splitlines() if l.strip()]
+        if added(url):
+            tiles_ = [l for l in tiles_ if l.split("|")[3:4] != [url]]
+            apps = [l for l in apps if not l.endswith("|cherrystone-browser " + url)]
+        else:
+            tiles_.append("|".join((name, letter, colour, url, ic)))
+            apps.append("%s|%s|cherrystone-browser %s" % (name, ic if Gtk.IconTheme.get_default().has_icon(ic)
+                                                           else "web-browser", url))
+        write(tiles_path, "".join(l + "\n" for l in tiles_))
+        write(USER_APPS, "".join(l + "\n" for l in apps))
+        out("cherrystone-home")
+        show(btn, url)
+
+    def show(btn, url):
+        on = added(url)
+        btn.set_label("✓ Added" if on else "Add")
+        ctx = btn.get_style_context()
+        # one style at a time: cherry "Add", plain grey once it's added
+        ctx.remove_class("plain" if not on else "main")
+        ctx.add_class("plain" if on else "main")
+
+    grid = Gtk.FlowBox()
+    grid.set_selection_mode(Gtk.SelectionMode.NONE)
+    grid.set_max_children_per_line(4)
+    grid.set_min_children_per_line(2)
+    grid.set_row_spacing(12)
+    grid.set_column_spacing(12)
+    grid.set_homogeneous(True)
+    for app in GALLERY:
+        name, what, url, colour, letter, ic = app
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        tile = Gtk.Box()
+        tile.set_size_request(118, 72)
+        tp = Gtk.CssProvider()
+        tp.load_from_data(("box { background: %s; }" % colour).encode())
+        tile.get_style_context().add_provider(tp, Gtk.STYLE_PROVIDER_PRIORITY_USER + 3)
+        if Gtk.IconTheme.get_default().has_icon(ic):
+            im = icon(ic, 32)
+            im.set_margin_start(8)
+            im.set_margin_top(8)
+            im.set_valign(Gtk.Align.START)
+            tile.pack_start(im, False, False, 0)
+        else:
+            lt = Gtk.Label(label=letter)
+            lp = Gtk.CssProvider()
+            lp.load_from_data(b"label { color: #ffffff; font-size: 26px; font-weight: 300; }")
+            lt.get_style_context().add_provider(lp, Gtk.STYLE_PROVIDER_PRIORITY_USER + 3)
+            lt.set_valign(Gtk.Align.START)
+            lt.set_margin_start(10)
+            lt.set_margin_top(4)
+            tile.pack_start(lt, False, False, 0)
+        card.pack_start(tile, False, False, 0)
+        card.pack_start(label(name, "bold"), False, False, 0)
+        card.pack_start(label(what, "small", wrap=True), False, False, 0)
+        b = Gtk.Button(label="Add")
+        b.connect("clicked", lambda _b, a=app: toggle(a, _b))
+        show(b, url)
+        card.pack_start(b, False, False, 0)
+        grid.add(card)
+    sc = Gtk.ScrolledWindow()
+    sc.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    sc.set_size_request(-1, min(420, Gdk.Screen.get_default().get_height() - 220))
+    sc.add(grid)
+    box.pack_start(sc, True, True, 0)
+    buttons(box, button("Done", "main", win.destroy))
+    win.show_all()
+
+
 SCREENS = {"wifi": wifi, "power": power, "password": password, "notifications": notifications,
            "profile": profile, "wallpaper": wallpaper, "display": display, "touchpad": touchpad,
            "about": about, "shortcuts": shortcuts, "tiles": tiles, "install": install,
-           "save": save, "reset": reset, "linuxapps": linuxapps, "recovery": recovery}
+           "save": save, "reset": reset, "linuxapps": linuxapps, "recovery": recovery,
+           "gallery": gallery}
 
 # Dark mode (Settings > Personalize): the same colour swap as the rest of Cherrystone
 _DARK = [('#ffffff', '#18181a'), ('#f8f9fa', '#1e1e21'), ('#f1f3f4', '#26262a'), ('#e8eaed', '#303035'), ('#dadce0', '#3c3c42'), ('#d7d9dc', '#303035'), ('#c4c7cc', '#3c3c42'), ('#fde4e8', '#4a1a26'), ('#fbe3e8', '#4a1a26'), ('#f9c9d2', '#5c1f2e'), ('#202124', '#ececef'), ('#3c4043', '#c8c8cc'), ('#5f6368', '#a0a0a6'), ('#80868b', '#8a8a90'), ('#9aa0a6', '#76767c'), ('#bdc1c6', '#5a5a60')]
+
+
+try:                                       # Personalize > Accent colour
+    import sys as _sys
+    _sys.path.insert(0, "/usr/lib/cherrystone")
+    from accent import accent as _accent
+except Exception:
+    def _accent(css):
+        return css
+
+
+# Personalize > Accent colour (cherrystone-theme knows the shades of each)
+ACCENTS = [("cherry", "#d81e3c"), ("blue", "#2b6fd6"), ("green", "#2e9b4f"), ("orange", "#e0701c"),
+           ("purple", "#6b4bc9"), ("teal", "#0f8f8a"), ("pink", "#c43e8a")]
 
 
 def _darken(css):
@@ -1786,9 +1940,9 @@ def _darken(css):
 if __name__ == "__main__":
     prov = Gtk.CssProvider()
     try:
-        prov.load_from_data(_darken(CSS))
+        prov.load_from_data(_accent(_darken(CSS)))
     except OSError:
-        prov.load_from_data(CSS)
+        prov.load_from_data(_accent(CSS))
     Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), prov,
                                              Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
     args = sys.argv[1:] or ["about"]

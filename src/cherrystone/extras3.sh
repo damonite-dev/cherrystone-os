@@ -340,6 +340,15 @@ import re
 _DARK = [('#ffffff', '#18181a'), ('#f8f9fa', '#1e1e21'), ('#f1f3f4', '#26262a'), ('#e8eaed', '#303035'), ('#dadce0', '#3c3c42'), ('#d7d9dc', '#303035'), ('#c4c7cc', '#3c3c42'), ('#fde4e8', '#4a1a26'), ('#fbe3e8', '#4a1a26'), ('#f9c9d2', '#5c1f2e'), ('#202124', '#ececef'), ('#3c4043', '#c8c8cc'), ('#5f6368', '#a0a0a6'), ('#80868b', '#8a8a90'), ('#9aa0a6', '#76767c'), ('#bdc1c6', '#5a5a60')]
 
 
+try:                                       # Personalize > Accent colour
+    import sys as _sys
+    _sys.path.insert(0, "/usr/lib/cherrystone")
+    from accent import accent as _accent
+except Exception:
+    def _accent(css):
+        return css
+
+
 def _darken(css):
     if open(os.path.expanduser("~/.config/cherrystone/theme")).read().strip() != "dark":
         return css
@@ -354,9 +363,9 @@ def _darken(css):
 
 p = Gtk.CssProvider()
 try:
-    p.load_from_data(_darken(CSS))
+    p.load_from_data(_accent(_darken(CSS)))
 except Exception:
-    p.load_from_data(CSS)
+    p.load_from_data(_accent(CSS))
 Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), p, Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
 Notes().show_all()
 Gtk.main()
@@ -494,6 +503,15 @@ import re
 _DARK = [('#ffffff', '#18181a'), ('#f8f9fa', '#1e1e21'), ('#f1f3f4', '#26262a'), ('#e8eaed', '#303035'), ('#dadce0', '#3c3c42'), ('#d7d9dc', '#303035'), ('#c4c7cc', '#3c3c42'), ('#fde4e8', '#4a1a26'), ('#fbe3e8', '#4a1a26'), ('#f9c9d2', '#5c1f2e'), ('#202124', '#ececef'), ('#3c4043', '#c8c8cc'), ('#5f6368', '#a0a0a6'), ('#80868b', '#8a8a90'), ('#9aa0a6', '#76767c'), ('#bdc1c6', '#5a5a60')]
 
 
+try:                                       # Personalize > Accent colour
+    import sys as _sys
+    _sys.path.insert(0, "/usr/lib/cherrystone")
+    from accent import accent as _accent
+except Exception:
+    def _accent(css):
+        return css
+
+
 def _darken(css):
     if open(os.path.expanduser("~/.config/cherrystone/theme")).read().strip() != "dark":
         return css
@@ -508,9 +526,9 @@ def _darken(css):
 
 p = Gtk.CssProvider()
 try:
-    p.load_from_data(_darken(CSS))
+    p.load_from_data(_accent(_darken(CSS)))
 except Exception:
-    p.load_from_data(CSS)
+    p.load_from_data(_accent(CSS))
 Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), p, Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
 win.add(box)
 win.show_all()

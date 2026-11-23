@@ -1,12 +1,6 @@
-Cherrystone changes to Badwolf 1.3.0:
-- new tabs open $CHERRYSTONE_HOME (the Cherrystone home page) instead of a blank page
-- the usual browser keys: Ctrl+W closes a tab, Ctrl+Tab / Ctrl+Shift+Tab switch tabs,
-  Alt+Left / Alt+Right go back / forward
-- new tabs get keyboard focus in the page, so the shortcuts work straight away
-- the JS and IMG toggle buttons are hidden (JavaScript is on by default via config.h)
-
---- a/badwolf.c
-+++ b/badwolf.c
+diff -ruN a/badwolf.c b/badwolf.c
+--- a/badwolf.c	2023-09-18 22:59:03.000000000 -0700
++++ b/badwolf.c	2026-11-22 19:08:11.610703207 -0800
 @@ -2,6 +2,9 @@
  // SPDX-FileCopyrightText: 2019-2023 Badwolf Authors <https://hacktivis.me/projects/badwolf>
  // SPDX-License-Identifier: BSD-3-Clause
@@ -34,7 +28,7 @@ Cherrystone changes to Badwolf 1.3.0:
  static gboolean
  WebViewCb_notify__uri(WebKitWebView *webView, GParamSpec *pspec, gpointer user_data);
  static gboolean
-@@ -79,10 +92,15 @@
+@@ -79,11 +92,16 @@
  WebViewCb_close(WebKitWebView *UNUSED(webView), gpointer user_data)
  {
  	struct Client *browser = (struct Client *)user_data;
@@ -43,13 +37,14 @@ Cherrystone changes to Badwolf 1.3.0:
  	gtk_widget_destroy(browser->box);
  
  	free(browser);
-+
+ 
 +	/* Cherrystone: the last tab closed, so close the window */
 +	if(gtk_notebook_get_n_pages(GTK_NOTEBOOK(window->notebook)) <= 1)
 +		gtk_widget_destroy(window->main_window);
- 
++
  	return TRUE;
  }
+ 
 @@ -127,7 +145,7 @@
  		return TRUE;
  	}
@@ -59,35 +54,15 @@ Cherrystone changes to Badwolf 1.3.0:
  
  	if(webkit_uri_for_display(location_uri) != location_uri)
  		gtk_widget_set_tooltip_text(browser->location, webkit_uri_for_display(location_uri));
-@@ -135,6 +153,27 @@
- 		gtk_widget_set_has_tooltip(browser->location, false);
- 
+@@ -137,6 +155,7 @@
  	return TRUE;
-+}
-+
-+/* Cherrystone: the "+" sits on the last tab, right after its close button */
-+static gboolean
-+cherry_plus_refresh(gpointer data)
-+{
-+	GtkNotebook *nb = GTK_NOTEBOOK(data);
-+	gint n          = gtk_notebook_get_n_pages(nb);
-+	for(gint i = 0; i < n; i++)
-+	{
-+		GtkWidget *lab = gtk_notebook_get_tab_label(nb, gtk_notebook_get_nth_page(nb, i));
-+		GtkWidget *plus = lab ? g_object_get_data(G_OBJECT(lab), "cherry-plus") : NULL;
-+		if(plus) gtk_widget_set_visible(plus, i == n - 1);
-+	}
-+	return G_SOURCE_REMOVE;
-+}
-+
-+static void
-+cherry_plus_pagesCb(GtkNotebook *nb, GtkWidget *UNUSED(child), guint UNUSED(num), gpointer UNUSED(d))
-+{
-+	g_idle_add(cherry_plus_refresh, nb);
  }
  
++
  GtkWidget *
-@@ -159,6 +198,7 @@
+ badwolf_new_tab_box(const gchar *title, struct Client *browser)
+ {
+@@ -159,6 +178,7 @@
  	gtk_widget_set_name(context_label, "browser__tabbox__context_label");
  	GtkWidget *context_label_event_box = gtk_event_box_new();
  	gtk_container_add(GTK_CONTAINER(context_label_event_box), context_label);
@@ -95,22 +70,7 @@ Cherrystone changes to Badwolf 1.3.0:
  	GtkWidget *playing =
  	    gtk_image_new_from_icon_name("audio-volume-high-symbolic", GTK_ICON_SIZE_SMALL_TOOLBAR);
  	gtk_widget_set_name(playing, "browser__tabbox__playing");
-@@ -185,6 +225,14 @@
- 	gtk_button_set_relief(GTK_BUTTON(close), GTK_RELIEF_NONE);
- 
- 	g_signal_connect(close, "clicked", G_CALLBACK(closeCb_clicked), browser);
-+	GtkWidget *plus = gtk_button_new_from_icon_name("list-add-symbolic", GTK_ICON_SIZE_BUTTON); /* Cherrystone */
-+	gtk_widget_set_name(plus, "cherry_tabplus");
-+	gtk_button_set_relief(GTK_BUTTON(plus), GTK_RELIEF_NONE);
-+	gtk_widget_set_tooltip_text(plus, "New tab (Ctrl+T)");
-+	gtk_box_pack_start(GTK_BOX(tab_box), plus, FALSE, FALSE, 0);
-+	g_object_set_data(G_OBJECT(tab_box), "cherry-plus", plus);
-+	g_signal_connect(plus, "clicked", G_CALLBACK(new_tabCb_clicked), browser->window);
-+	g_idle_add(cherry_plus_refresh, browser->window->notebook);
- 
- 	gtk_widget_set_tooltip_text(tab_box, title);
- 
-@@ -429,6 +477,58 @@
+@@ -429,6 +449,58 @@
  	return g_string_free(errors, FALSE);
  }
  
@@ -169,7 +129,7 @@ Cherrystone changes to Badwolf 1.3.0:
  static gboolean
  WebViewCb_load_failed_with_tls_errors(WebKitWebView *UNUSED(web_view),
                                        gchar *failing_text,
-@@ -633,6 +733,8 @@
+@@ -633,6 +705,8 @@
  SearchEntryCb_stop__search(GtkSearchEntry *UNUSED(search), gpointer user_data)
  {
  	struct Client *browser               = (struct Client *)user_data;
@@ -178,7 +138,7 @@ Cherrystone changes to Badwolf 1.3.0:
  	WebKitFindController *findController = webkit_web_view_get_find_controller(browser->webView);
  
  	webkit_find_controller_search_finish(findController);
-@@ -677,11 +779,13 @@
+@@ -677,11 +751,13 @@
  
  	browser->javascript = gtk_toggle_button_new_with_mnemonic(_("_JS"));
  	gtk_widget_set_name(browser->javascript, "browser__javascript");
@@ -192,7 +152,7 @@ Cherrystone changes to Badwolf 1.3.0:
  	gtk_widget_set_tooltip_text(browser->auto_load_images, _("Toggle loading images automatically"));
  	gtk_button_set_relief(GTK_BUTTON(browser->auto_load_images), GTK_RELIEF_NONE);
  
-@@ -691,11 +795,13 @@
+@@ -691,11 +767,13 @@
  	GtkWidget *print =
  	    gtk_button_new_from_icon_name("document-print-symbolic", GTK_ICON_SIZE_SMALL_TOOLBAR);
  	gtk_widget_set_name(browser->back, "browser__print");
@@ -206,7 +166,7 @@ Cherrystone changes to Badwolf 1.3.0:
  	browser->statuslabel = gtk_label_new(NULL);
  	gtk_widget_set_name(browser->statuslabel, "browser__statuslabel");
  
-@@ -817,7 +923,8 @@
+@@ -817,7 +895,8 @@
  		gtk_entry_set_completion(GTK_ENTRY(browser->location), location_completion);
  	}
  
@@ -216,7 +176,7 @@ Cherrystone changes to Badwolf 1.3.0:
  	gtk_entry_set_input_purpose(GTK_ENTRY(browser->location), GTK_INPUT_PURPOSE_URL);
  
  	gtk_entry_set_placeholder_text(GTK_ENTRY(browser->search), _("search in current page"));
-@@ -898,6 +1005,8 @@
+@@ -898,6 +977,8 @@
  	                 G_CALLBACK(WebViewCb_load_failed_with_tls_errors),
  	                 browser);
  	g_signal_connect(browser->webView, "load-changed", G_CALLBACK(WebViewCb_load_changed), browser);
@@ -225,7 +185,7 @@ Cherrystone changes to Badwolf 1.3.0:
  
  	/* signals for search widget */
  	g_signal_connect(browser->search, "next-match", G_CALLBACK(SearchEntryCb_next__match), browser);
-@@ -944,6 +1053,7 @@
+@@ -944,6 +1025,7 @@
  	if(auto_switch)
  	{
  		gtk_notebook_set_current_page(notebook, gtk_notebook_page_num(notebook, browser->box));
@@ -233,7 +193,7 @@ Cherrystone changes to Badwolf 1.3.0:
  	}
  
  	return 0;
-@@ -953,7 +1063,7 @@
+@@ -953,7 +1035,7 @@
  new_tabCb_clicked(GtkButton *UNUSED(new_tab), gpointer user_data)
  {
  	struct Window *window  = (struct Window *)user_data;
@@ -242,7 +202,7 @@ Cherrystone changes to Badwolf 1.3.0:
  
  	badwolf_new_tab(GTK_NOTEBOOK(window->notebook), browser, TRUE);
  }
-@@ -1082,8 +1192,12 @@
+@@ -1082,8 +1164,12 @@
  	g_object_ref(bookmarks_completion_model);
  
  	window->main_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -256,7 +216,7 @@ Cherrystone changes to Badwolf 1.3.0:
  	window->downloads_tab   = badwolf_downloads_tab_new();
  	window->content_manager = webkit_user_content_manager_new();
  
-@@ -1107,7 +1221,7 @@
+@@ -1107,7 +1193,7 @@
  	gtk_window_set_default_size(
  	    GTK_WINDOW(window->main_window), BADWOLF_DEFAULT_WIDTH, BADWOLF_DEFAULT_HEIGHT);
  	gtk_window_set_role(GTK_WINDOW(window->main_window), "browser");
@@ -265,7 +225,7 @@ Cherrystone changes to Badwolf 1.3.0:
  
  	gchar *provider_path_app = g_build_filename(DATADIR, "interface.css", NULL);
  	/* flawfinder: ignore, just a presence check */
-@@ -1136,7 +1250,7 @@
+@@ -1136,7 +1222,7 @@
  	}
  	g_free(provider_path_user);
  
@@ -274,15 +234,12 @@ Cherrystone changes to Badwolf 1.3.0:
  
  	gtk_notebook_set_action_widget(GTK_NOTEBOOK(window->notebook), window->new_tab, GTK_PACK_END);
  	gtk_notebook_set_scrollable(GTK_NOTEBOOK(window->notebook), TRUE);
-@@ -1155,11 +1269,14 @@
+@@ -1155,11 +1241,11 @@
  	g_signal_connect(window->new_tab, "clicked", G_CALLBACK(new_tabCb_clicked), window);
  	g_signal_connect(window->notebook, "switch-page", G_CALLBACK(notebookCb_switch__page), window);
  
 -	gtk_widget_show(window->new_tab);
-+	gtk_widget_set_no_show_all(window->new_tab, TRUE); /* Cherrystone: the + is on the last tab instead */
-+	g_signal_connect(window->notebook, "page-added", G_CALLBACK(cherry_plus_pagesCb), NULL);
-+	g_signal_connect(window->notebook, "page-removed", G_CALLBACK(cherry_plus_pagesCb), NULL);
-+	g_signal_connect(window->notebook, "page-reordered", G_CALLBACK(cherry_plus_pagesCb), NULL);
++	gtk_widget_show(window->new_tab); /* Cherrystone: the "+" for a new tab, at the end of the tabs */
  	gtk_widget_show_all(window->main_window);
  
  	if(argc == 1)
@@ -291,79 +248,9 @@ Cherrystone changes to Badwolf 1.3.0:
  	else
  		for(int i = 1; i < argc; ++i)
  			badwolf_new_tab(GTK_NOTEBOOK(window->notebook), new_browser(window, argv[i], NULL), FALSE);
---- a/keybindings.c
-+++ b/keybindings.c
-@@ -84,6 +84,7 @@
- 		{
- 			switch(((GdkEventKey *)event)->keyval)
- 			{
-+			case GDK_KEY_w: /* Cherrystone: usual browser key */
- 			case GDK_KEY_F4:
- 				webkit_web_view_try_close(browser->webView);
- 				return TRUE;
-@@ -94,7 +95,19 @@
- 					webkit_web_view_reload(browser->webView);
- 
- 				return TRUE;
-+			case GDK_KEY_h: /* Cherrystone: history */
-+				badwolf_new_tab(notebook, new_browser(window, g_getenv("CHERRYSTONE_HISTORY"), NULL), TRUE);
-+				return TRUE;
-+			case GDK_KEY_d: /* Cherrystone: add this page to the home page */
-+			{
-+				const gchar *argv[] = {"cherrystone-tiles", "add", webkit_web_view_get_uri(browser->webView),
-+				                       webkit_web_view_get_title(browser->webView), NULL};
-+				if(argv[2] != NULL)
-+					g_spawn_async(NULL, (gchar **)argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, NULL);
-+				return TRUE;
-+			}
- 			case GDK_KEY_f:
-+				gtk_widget_show(browser->search); /* Cherrystone */
- 				gtk_widget_grab_focus(browser->search);
- 				return TRUE;
- 			case GDK_KEY_l:
-@@ -108,6 +121,12 @@
- 				return TRUE;
- 			case GDK_KEY_0:
- 				webkit_web_view_set_zoom_level(WEBKIT_WEB_VIEW(browser->webView), 1);
-+				return TRUE;
-+			case GDK_KEY_Tab: /* Cherrystone: usual browser key */
-+				gtk_notebook_next_page(notebook);
-+				return TRUE;
-+			case GDK_KEY_ISO_Left_Tab:
-+				gtk_notebook_prev_page(notebook);
- 				return TRUE;
- 			case GDK_KEY_p:
- 				webkit_print_operation_run_dialog(webkit_print_operation_new(browser->webView),
-@@ -126,7 +145,7 @@
- 				gtk_notebook_prev_page(notebook);
- 				return TRUE;
- 			case GDK_KEY_t:
--				badwolf_new_tab(notebook, new_browser(window, NULL, NULL), TRUE);
-+				badwolf_new_tab(notebook, new_browser(window, g_getenv("CHERRYSTONE_HOME"), NULL), TRUE);
- 				return TRUE;
- 			}
- 		}
-@@ -142,11 +161,13 @@
- 
- 		switch(((GdkEventKey *)event)->keyval)
- 		{
--		case GDK_KEY_Left:
--			gtk_notebook_prev_page(notebook);
--			return TRUE;
--		case GDK_KEY_Right:
--			gtk_notebook_next_page(notebook);
-+		case GDK_KEY_Left: /* Cherrystone: back, like other browsers */
-+			if(browser != NULL) webkit_web_view_go_back(browser->webView);
-+			else gtk_notebook_prev_page(notebook);
-+			return TRUE;
-+		case GDK_KEY_Right: /* Cherrystone: forward, like other browsers */
-+			if(browser != NULL) webkit_web_view_go_forward(browser->webView);
-+			else gtk_notebook_next_page(notebook);
- 			return TRUE;
- 		}
- 		if((((GdkEventKey *)event)->keyval >= GDK_KEY_0) &&
---- a/downloads.c
-+++ b/downloads.c
+diff -ruN a/downloads.c b/downloads.c
+--- a/downloads.c	2023-09-18 22:59:03.000000000 -0700
++++ b/downloads.c	2026-11-22 19:08:11.472110834 -0800
 @@ -193,6 +193,7 @@
  	gtk_widget_set_name(scrolled_window, "browser__scrollwin_downloads");
  	gtk_container_add(GTK_CONTAINER(scrolled_window), window->downloads_tab);
@@ -394,8 +281,80 @@ Cherrystone changes to Badwolf 1.3.0:
  
  	gtk_widget_show_all(tab_box);
  }
---- a/uri.c
-+++ b/uri.c
+diff -ruN a/keybindings.c b/keybindings.c
+--- a/keybindings.c	2023-09-18 22:59:03.000000000 -0700
++++ b/keybindings.c	2026-11-22 19:08:11.471877482 -0800
+@@ -84,6 +84,7 @@
+ 		{
+ 			switch(((GdkEventKey *)event)->keyval)
+ 			{
++			case GDK_KEY_w: /* Cherrystone: usual browser key */
+ 			case GDK_KEY_F4:
+ 				webkit_web_view_try_close(browser->webView);
+ 				return TRUE;
+@@ -94,7 +95,19 @@
+ 					webkit_web_view_reload(browser->webView);
+ 
+ 				return TRUE;
++			case GDK_KEY_h: /* Cherrystone: history */
++				badwolf_new_tab(notebook, new_browser(window, g_getenv("CHERRYSTONE_HISTORY"), NULL), TRUE);
++				return TRUE;
++			case GDK_KEY_d: /* Cherrystone: add this page to the home page */
++			{
++				const gchar *argv[] = {"cherrystone-tiles", "add", webkit_web_view_get_uri(browser->webView),
++				                       webkit_web_view_get_title(browser->webView), NULL};
++				if(argv[2] != NULL)
++					g_spawn_async(NULL, (gchar **)argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, NULL);
++				return TRUE;
++			}
+ 			case GDK_KEY_f:
++				gtk_widget_show(browser->search); /* Cherrystone */
+ 				gtk_widget_grab_focus(browser->search);
+ 				return TRUE;
+ 			case GDK_KEY_l:
+@@ -109,6 +122,12 @@
+ 			case GDK_KEY_0:
+ 				webkit_web_view_set_zoom_level(WEBKIT_WEB_VIEW(browser->webView), 1);
+ 				return TRUE;
++			case GDK_KEY_Tab: /* Cherrystone: usual browser key */
++				gtk_notebook_next_page(notebook);
++				return TRUE;
++			case GDK_KEY_ISO_Left_Tab:
++				gtk_notebook_prev_page(notebook);
++				return TRUE;
+ 			case GDK_KEY_p:
+ 				webkit_print_operation_run_dialog(webkit_print_operation_new(browser->webView),
+ 				                                  GTK_WINDOW(browser->window->main_window));
+@@ -126,7 +145,7 @@
+ 				gtk_notebook_prev_page(notebook);
+ 				return TRUE;
+ 			case GDK_KEY_t:
+-				badwolf_new_tab(notebook, new_browser(window, NULL, NULL), TRUE);
++				badwolf_new_tab(notebook, new_browser(window, g_getenv("CHERRYSTONE_HOME"), NULL), TRUE);
+ 				return TRUE;
+ 			}
+ 		}
+@@ -142,11 +161,13 @@
+ 
+ 		switch(((GdkEventKey *)event)->keyval)
+ 		{
+-		case GDK_KEY_Left:
+-			gtk_notebook_prev_page(notebook);
++		case GDK_KEY_Left: /* Cherrystone: back, like other browsers */
++			if(browser != NULL) webkit_web_view_go_back(browser->webView);
++			else gtk_notebook_prev_page(notebook);
+ 			return TRUE;
+-		case GDK_KEY_Right:
+-			gtk_notebook_next_page(notebook);
++		case GDK_KEY_Right: /* Cherrystone: forward, like other browsers */
++			if(browser != NULL) webkit_web_view_go_forward(browser->webView);
++			else gtk_notebook_next_page(notebook);
+ 			return TRUE;
+ 		}
+ 		if((((GdkEventKey *)event)->keyval >= GDK_KEY_0) &&
+diff -ruN a/uri.c b/uri.c
+--- a/uri.c	2023-09-18 22:59:03.000000000 -0700
++++ b/uri.c	2026-11-22 19:08:11.473183571 -0800
 @@ -2,6 +2,7 @@
  // SPDX-FileCopyrightText: 2019-2022 Badwolf Authors <https://hacktivis.me/projects/badwolf>
  // SPDX-License-Identifier: BSD-3-Clause

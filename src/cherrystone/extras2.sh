@@ -191,11 +191,18 @@ except Exception:
     finish()
 
 css = Gtk.CssProvider()
-css.load_from_data(b"""
+try:                                       # Personalize > Accent colour
+    import sys as _sys
+    _sys.path.insert(0, "/usr/lib/cherrystone")
+    from accent import accent as _accent
+except Exception:
+    def _accent(css):
+        return css
+css.load_from_data(_accent(b"""
 window.bye { background: #000000; }
 .bye label { color: #ffffff; font-size: 34px; font-weight: 300; }
 .bye .dots { color: #d81e3c; }
-""")
+"""))
 Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_USER + 2)
 
 win = Gtk.Window()

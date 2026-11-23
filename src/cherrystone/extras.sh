@@ -105,6 +105,14 @@ a.app:nth-child(6) { animation-delay: 150ms; } a.app:nth-child(7) { animation-de
 a.app:nth-child(n+8) { animation-delay: 210ms; }
 .i { position: absolute; left: 10px; top: 10px; width: 36px; height: 36px; line-height: 36px;
      font-size: 30px; font-weight: 300; color: #ffffff; text-align: left; }
+/* Live tiles: weather and a clock, two tiles wide, updating by themselves */
+a.live { width: 286px; overflow: hidden; }
+a.live.weather { background: #2b6fd6; }
+a.live.clock { background: #d81e3c; }
+.big { position: absolute; left: 12px; top: 6px; font-size: 44px; font-weight: 300; letter-spacing: -1px; }
+.glyph { position: absolute; right: 14px; top: 8px; font-size: 40px; line-height: 1; opacity: 0.95; }
+a.live .t { font-size: 14px; }
+a.live .t small { display: block; opacity: 0.85; font-size: 12px; }
 .hint { color: #5f6368; font-size: 12px; margin: 30px 0 8px; }
 .edit { font-size: 12px; }
 .edit a { color: #5f6368; }
@@ -145,6 +153,68 @@ document.getElementById("date").textContent = new Date().toLocaleDateString(unde
 </div>
 <div class="apps">
 HTML
+tz="$(cat /etc/timezone 2>/dev/null | tr -cd 'A-Za-z0-9_/+-')"
+if [ "$mode" != lite ] && [ ! -f ~/.config/cherrystone/no-live-tiles ]; then
+cat <<HTML
+<a class="app live weather" id="wx" href="https://www.google.com/search?q=weather"><span class="big" id="wxt">&nbsp;</span><span class="glyph" id="wxg"></span><span class="t" id="wxd">Weather<small>Looking outside...</small></span></a><a class="app live clock" href="cherrystone:quick"><span class="big" id="clk">&nbsp;</span><span class="t" id="clkd">&nbsp;</span></a>
+<script>
+(function () {
+  // the clock
+  function tick() {
+    var d = new Date();
+    document.getElementById("clk").textContent = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    document.getElementById("clkd").textContent = d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  }
+  tick(); setInterval(tick, 10000);
+
+  // the weather: the city of your time zone (no exact location needed),
+  // from Open-Meteo (free, no account); kept for 30 minutes
+  var tz = "$tz", city = tz.split("/").pop().replace(/_/g, " ");
+  var us = /^(America\/(New_York|Chicago|Denver|Los_Angeles|Phoenix|Anchorage|Detroit|Boise|Indiana|Kentucky|North_Dakota|Juneau|Sitka|Nome|Adak|Menominee|Metlakatla|Yakutat)|Pacific\/Honolulu)/.test(tz);
+  var tile = document.getElementById("wx");
+  if (!tz || tz === "UTC") { document.getElementById("wxd").innerHTML = "Weather<small>Pick your time zone in Settings</small>"; return; }
+  tile.href = "https://www.google.com/search?q=" + encodeURIComponent("weather " + city);
+  var KINDS = [[0, "Clear", "\u2600"], [2, "Partly cloudy", "\u26c5"], [3, "Cloudy", "\u2601"], [48, "Foggy", "\u2601"],
+               [57, "Drizzle", "\u2602"], [67, "Rain", "\u2602"], [77, "Snow", "\u2744"], [82, "Showers", "\u2602"],
+               [86, "Snow showers", "\u2744"], [99, "Thunderstorms", "\u26a1"]];
+  function kind(code) { for (var i = 0; i < KINDS.length; i++) if (code <= KINDS[i][0]) return KINDS[i]; return KINDS[3]; }
+  function show(w) {
+    var k = kind(w.code), u = us ? "\u00b0" : "\u00b0";
+    document.getElementById("wxt").textContent = Math.round(w.temp) + u;
+    document.getElementById("wxg").textContent = k[2];
+    document.getElementById("wxd").innerHTML = "";
+    var t = document.getElementById("wxd");
+    t.appendChild(document.createTextNode(k[1] + " in " + city));
+    var sm = document.createElement("small");
+    sm.textContent = "High " + Math.round(w.hi) + u + "  Low " + Math.round(w.lo) + u;
+    t.appendChild(sm);
+  }
+  function fail() { document.getElementById("wxd").innerHTML = "Weather<small>Connect to the internet to see it</small>"; }
+  var key = "cs-weather-" + tz + (us ? "-f" : "-c"), cached = null;
+  try { cached = JSON.parse(localStorage.getItem(key)); } catch (e) {}
+  if (cached && Date.now() - cached.at < 30 * 60 * 1000) { show(cached); return; }
+  if (cached) show(cached);
+  fetch("https://geocoding-api.open-meteo.com/v1/search?count=1&name=" + encodeURIComponent(city))
+    .then(function (r) { return r.json(); })
+    .then(function (g) {
+      var p = g.results && g.results[0];
+      if (!p) throw 0;
+      return fetch("https://api.open-meteo.com/v1/forecast?latitude=" + p.latitude + "&longitude=" + p.longitude +
+                   "&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto" +
+                   (us ? "&temperature_unit=fahrenheit" : ""));
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (f) {
+      var w = { at: Date.now(), temp: f.current.temperature_2m, code: f.current.weather_code,
+                hi: f.daily.temperature_2m_max[0], lo: f.daily.temperature_2m_min[0] };
+      try { localStorage.setItem(key, JSON.stringify(w)); } catch (e) {}
+      show(w);
+    })
+    .catch(function () { if (!cached) fail(); });
+})();
+</script>
+HTML
+fi
 while IFS='|' read -r name letter colour url icon; do
 	[ -n "$name" ] && [ -n "$url" ] || continue
 	svg="/usr/share/icons/Papirus/64x64/apps/$icon.svg"
@@ -157,10 +227,15 @@ while IFS='|' read -r name letter colour url icon; do
 done < "$tiles"
 echo "</div>"
 echo "<p class=\"hint\">$hint</p>"
-[ "$mode" = lite ] || echo '<p class="edit"><a href="cherrystone:tiles">Edit tiles</a> &middot; <a href="file:///usr/share/cherrystone/tour.html">New here? Take the tour</a></p>'
+[ "$mode" = lite ] || echo '<p class="edit"><a href="cherrystone:gallery">Add apps</a> &middot; <a href="cherrystone:tiles">Edit tiles</a> &middot; <a href="file:///usr/share/cherrystone/tour.html">New here? Take the tour</a></p>'
 echo '<a class="stony" href="file:///usr/share/cherrystone/cherry-run.html"><span>Play Cherry Run?</span><img src="file:///usr/share/cherrystone/stony/stony-happy-small.png" alt="Stony"></a>'
 echo "</div></body></html>"
-} > "$out.new" && mv "$out.new" "$out"
+} > "$out.new" && {
+	# the accent colour (Personalize); the tiles keep their own colours
+	[ -s ~/.config/cherrystone/accent.sed ] &&
+		sed -i -e '/class="app"/!{' -e "$(cat ~/.config/cherrystone/accent.sed)" -e '}' "$out.new"
+	mv "$out.new" "$out"
+}
 
 # NetSurf's home page setting
 ns=~/.config/netsurf/Choices
@@ -204,6 +279,8 @@ makefile root:root 0755 "$tmp"/usr/local/bin/cherrystone-url <<'EOF'
 case "$1" in
 	cherrystone:wifi*) exec cherrystone-wifi ;;
 	cherrystone:tiles*) exec cherrystone-tiles ;;
+	cherrystone:gallery*) exec cherrystone-gallery ;;
+	cherrystone:quick*) exec cherrystone-quick ;;
 	cherrystone:clear-history*)
 		: > "$HOME/.local/share/cherrystone/history.js"
 		notify-send -i cherrystone "History cleared" "" ;;
@@ -329,6 +406,15 @@ button.go:active { background: #e8eaed; background-image: none; }
 """
 
 
+try:                                       # Personalize > Accent colour
+    import sys as _sys
+    _sys.path.insert(0, "/usr/lib/cherrystone")
+    from accent import accent as _accent
+except Exception:
+    def _accent(css):
+        return css
+
+
 class SignIn(Gtk.Window):
     def __init__(self):
         super().__init__(title="Sign in")
@@ -343,7 +429,7 @@ class SignIn(Gtk.Window):
         self.move(0, 0)
 
         style = Gtk.CssProvider()
-        style.load_from_data(CSS)
+        style.load_from_data(_accent(CSS))
         Gtk.StyleContext.add_provider_for_screen(screen, style, Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
 
         overlay = Gtk.Overlay()

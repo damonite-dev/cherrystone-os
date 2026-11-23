@@ -64,11 +64,18 @@ def read(p):
 scr = Gdk.Screen.get_default()
 w, h = scr.get_width(), scr.get_height()
 css = Gtk.CssProvider()
-css.load_from_data(b"""
+try:                                       # Personalize > Accent colour
+    import sys as _sys
+    _sys.path.insert(0, "/usr/lib/cherrystone")
+    from accent import accent as _accent
+except Exception:
+    def _accent(css):
+        return css
+css.load_from_data(_accent(b"""
 .pod { background: rgba(255,255,255,0.9); border-radius: 0; padding: 16px 40px; }
 .name { font-size: 20px; font-weight: bold; color: #202124; }
 .hint { background: rgba(255,255,255,0.9); border-radius: 0; padding: 6px 16px; color: #3c4043; }
-""")
+"""))
 Gtk.StyleContext.add_provider_for_screen(scr, css, Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
 
 win = Gtk.OffscreenWindow()

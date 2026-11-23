@@ -20,6 +20,15 @@ COLOURS = ["#202124", "#ffffff", "#d81e3c", "#e39b16", "#f4d03f", "#2e9b4f",
 SIZES = [("S", 3), ("M", 8), ("L", 18), ("XL", 36)]
 W, H = 900, 560
 
+try:                                       # Personalize > Accent colour
+    import sys as _sys
+    _sys.path.insert(0, "/usr/lib/cherrystone")
+    from accent import accent as _accent
+except Exception:
+    def _accent(css):
+        return css
+
+
 CSS = b"""
 window.paint { background: #ffffff; }
 .tools { background: #f1f3f4; padding: 5px 10px; }
@@ -54,7 +63,7 @@ window.paint { background: #18181a; }
 .tools .sep { background: #3c3c42; }
 """
 prov = Gtk.CssProvider()
-prov.load_from_data(css)
+prov.load_from_data(_accent(css))
 Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
 
 
